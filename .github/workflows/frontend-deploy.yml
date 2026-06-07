@@ -1,0 +1,70 @@
+name: 🎨 Frontend Deploy
+
+on:
+  push:
+    branches: [master, main]
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/frontend-deploy.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy to Production Server
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/master'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.PRODUCTION_HOST }}
+          username: ${{ secrets.PRODUCTION_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          script_stop: true
+          script: |
+            echo "🎨 Deploying Frontend..."
+
+            cd /var/www/cheapestdata
+            git fetch origin
+            git reset --hard origin/master
+
+            cd frontend
+            npm ci
+
+            echo "🔍 Running zero-error verification..."
+            npm run verify-zero-errors
+
+            echo "🔨 Building frontend..."
+            npm run build
+
+            echo "🧪 Running runtime error tests..."
+            npm run verify-runtime
+
+            echo "🎭 Running E2E tests for critical flows..."
+            npm run test:e2e:runtime
+
+            # Restart PM2
+            pm2 restart production-frontend
+
+            echo "✅ Frontend deployed successfully"
+
+      - name: Verify deployment
+        run: |
+          sleep 10
+          response=$(curl -s -o /dev/null -w "%{http_code}" https://cheapestdata.com)
+          if [ "$response" = "200" ]; then
+            echo "✅ Frontend is responding (HTTP $response)"
+          else
+            echo "❌ Frontend check failed: HTTP $response"
+            exit 1
+          fi

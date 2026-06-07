@@ -1,0 +1,104 @@
+name: Deploy to Staging
+
+on:
+  push:
+    branches: [staging]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy to Staging
+    runs-on: self-hosted
+    defaults:
+      run:
+        working-directory: /var/www/cheapestdata-staging
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: staging
+
+      - name: Pull latest code
+        run: |
+          git fetch origin staging
+          git reset --hard origin/staging
+          echo "✅ Code updated"
+
+      - name: Stop frontend
+        run: |
+          PM2_HOME=/etc/.pm2 pm2 stop staging-frontend || echo "Frontend not running"
+          PM2_HOME=/etc/.pm2 pm2 delete staging-frontend || echo "Frontend not in PM2"
+          echo "✅ Frontend stopped"
+
+      - name: Clear cache
+        run: |
+          cd frontend
+          rm -rf .next node_modules/.cache
+          echo "✅ Cache cleared"
+
+      - name: Install dependencies
+        run: |
+          cd frontend
+          npm ci --legacy-peer-deps
+          echo "✅ Dependencies installed"
+
+      - name: Zero-error verification
+        run: |
+          cd frontend
+          echo "🔍 Running zero-error verification..."
+          npm run verify-zero-errors
+
+      - name: Build frontend
+        run: |
+          cd frontend
+          npm run build
+        env:
+          NODE_ENV: staging
+          NEXT_PUBLIC_API_URL: https://staging.cheapestdata.com
+        timeout-minutes: 15
+
+      - name: Start frontend
+        run: |
+          PM2_HOME=/etc/.pm2 pm2 start ecosystem.config.js --only staging-frontend --env staging
+          echo "✅ Frontend started"
+
+      - name: Wait for stabilization
+        run: |
+          sleep 15
+          echo "✅ Stabilized"
+
+      - name: Verify deployment
+        run: |
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" https://staging.cheapestdata.com)
+
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "✅ Deployment successful - HTTP 200"
+          else
+            echo "❌ Deployment failed - HTTP $HTTP_CODE"
+            exit 1
+          fi
+
+      - name: Check PM2 status
+        run: |
+          PM2_HOME=/etc/.pm2 pm2 status | grep staging-frontend
+          echo "✅ Deployment complete"
+
+      - name: Deployment summary
+        run: |
+          echo "🎉 **Staging Deployment Complete**"
+          echo ""
+          echo "**Frontend URL:** https://staging.cheapestdata.com"
+          echo "**Build Time:** $(date)"
+          echo ""
+          echo "✅ **Automated Checks Passed:**"
+          echo "   ✓ Zero-error code verification"
+          echo "   ✓ Build successful with no TypeScript errors"
+          echo "   ✓ PM2 health check OK"
+          echo "   ✓ HTTP 200 response"
+          echo ""
+          echo "**Next Steps:**"
+          echo "1. Open browser and navigate to https://staging.cheapestdata.com"
+          echo "2. Open DevTools Console (F12)"
+          echo "3. Verify ZERO runtime console errors"
+          echo "4. Test login and navigation"
