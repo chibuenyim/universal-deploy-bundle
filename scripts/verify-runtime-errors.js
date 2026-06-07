@@ -67,8 +67,15 @@ server.stdout.on('data', (data) => {
 
 server.stderr.on('data', (data) => {
   const error = data.toString();
-  console.error(`${colors.red}${error}${colors.reset}`);
-  runtimeErrors.push(error);
+
+  // Filter out warnings - only treat actual errors as failures
+  if (error.includes('⚠ Warning:') || error.includes('warn')) {
+    buildWarnings.push(error);
+    console.warn(`${colors.yellow}${error}${colors.reset}`);
+  } else {
+    console.error(`${colors.red}${error}${colors.reset}`);
+    runtimeErrors.push(error);
+  }
 });
 
 // Wait for server to start
