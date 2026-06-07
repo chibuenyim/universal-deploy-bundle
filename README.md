@@ -191,6 +191,99 @@ Production Deployment ✅
 
 If ANY layer fails → Deployment blocked
 
+## 🌿 Merge-Sandbox Strategy (CRITICAL)
+
+**To avoid code degradation and conflicts, this bundle follows a strict testing workflow:**
+
+### Branch Strategy
+```
+master (production)
+  ↑
+  | (only after staging tests pass)
+merge-sandbox (staging verification)
+  ↑
+  | (feature branches)
+feature-branches (development)
+```
+
+### Workflow Rules
+
+**1. NEVER merge directly to master**
+- ❌ Forbidden: Direct push to master
+- ❌ Forbidden: Merge untested code to master
+- ✅ Required: Always use merge-sandbox first
+
+**2. Testing Pipeline**
+```bash
+# Step 1: Create feature branch
+git checkout -b feature/my-feature
+
+# Step 2: Develop and test locally
+npm run verify-all
+
+# Step 3: Commit and push to feature branch
+git add .
+git commit -m "feat: my feature"
+git push origin feature/my-feature
+
+# Step 4: Merge to merge-sandbox
+git checkout merge-sandbox
+git merge feature/my-feature
+git push origin merge-sandbox
+
+# Step 5: CI/CD deploys to staging automatically
+# - All verification tests run
+# - Deployed to staging environment
+# - Manual testing on staging
+
+# Step 6: Only after staging tests pass, merge to master
+git checkout master
+git merge merge-sandbox
+git push origin master
+
+# Step 7: CI/CD deploys to production automatically
+```
+
+**3. Staging Verification Required**
+Before ANY merge to master:
+- ✅ All verification tests must pass
+- ✅ Staging deployment must be successful
+- ✅ Manual testing on staging must be complete
+- ✅ No regressions detected
+
+### Why This Strategy?
+
+**Prevents:**
+- ❌ Code degradation (untested code reaching production)
+- ❌ Merge conflicts (early detection on merge-sandbox)
+- ❌ Runtime errors in production (staging catches them)
+- ❌ Broken builds (CI/CD catches them)
+
+**Ensures:**
+- ✅ Zero errors in production
+- ✅ Zero downtime deployments
+- ✅ Zero conflicts (resolved early)
+- ✅ Zero regressions (staging verification)
+
+### Branch Protection Rules
+
+**Master Branch:**
+- ✅ Require pull request approval (1)
+- ✅ Require status checks to pass:
+  - verify-zero-errors
+  - verify-runtime
+  - test:e2e:runtime
+  - build
+  - staging-deployment
+- ✅ Only allow merge through PRs
+- ❌ Block direct pushes
+- ❌ Block merges if staging failed
+
+**Merge-Sandbox Branch:**
+- ✅ Require status checks to pass
+- ✅ Allow force push (for conflict resolution)
+- ✅ Automatic deployment to staging
+
 ## 🎨 Customization
 
 ### Adjust Verification Scripts
@@ -390,11 +483,79 @@ npm run verify-all
 
 ## 🤝 Contributing
 
-To improve this bundle:
-1. Test on your project
-2. Note any issues
-3. Submit improvements
-4. Share feedback
+**CRITICAL: This bundle follows strict testing workflow**
+
+### Step-by-Step Contribution Process
+
+**1. Fork and Create Feature Branch**
+```bash
+git checkout -b feature/my-improvement
+```
+
+**2. Make Your Changes**
+```bash
+# Edit files
+npm run verify-all  # Must pass locally
+```
+
+**3. Test on Multiple Projects**
+```bash
+# Install bundle on test project
+cp -r universal-deploy-bundle /test-project/
+cd /test-project
+npm run verify-all  # Must pass
+```
+
+**4. Commit and Push**
+```bash
+git add .
+git commit -m "feat: my improvement with tests"
+git push origin feature/my-improvement
+```
+
+**5. Create Pull Request to merge-sandbox**
+- NOT to master directly
+- Include test results
+- Describe projects tested on
+
+**6. Staging Verification**
+- CI/CD runs all tests
+- Bundle deployed to staging
+- Manual testing performed
+- Only after staging passes, merge to master
+
+**7. Merge to Master**
+```bash
+# After PR approved and staging passes
+git checkout merge-sandbox
+git pull origin merge-sandbox
+git checkout master
+git merge merge-sandbox
+git push origin master
+```
+
+### What We're Looking For
+
+**Contributions that add value:**
+- ✅ New verification checks
+- ✅ Better error detection
+- ✅ Improved documentation
+- ✅ Bug fixes with tests
+- ✅ Performance improvements
+
+**Contributions that maintain quality:**
+- ✅ All tests pass
+- ✅ No code degradation
+- ✅ No merge conflicts
+- ✅ Proper documentation
+- ✅ Tested on multiple projects
+
+**Contributions that get rejected:**
+- ❌ Breaking changes without migration path
+- ❌ Tests that don't work consistently
+- ❌ Code that only works on one project
+- ❌ Documentation that's unclear
+- ❌ Skipping merge-sandbox testing
 
 ## 📄 License
 
