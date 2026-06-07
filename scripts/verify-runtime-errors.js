@@ -39,9 +39,10 @@ if (!fs.existsSync(nextBuildPath)) {
 console.log(`${colors.cyan}Step 1: Starting production server...${colors.reset}\n`);
 
 // Start Next.js server in production mode
+const verifyPort = process.env.VERIFY_PORT || '3011';
 const server = spawn('npm', ['run', 'start'], {
   cwd: process.cwd(),
-  env: { ...process.env, NODE_ENV: 'production', PORT: '3010' },
+  env: { ...process.env, NODE_ENV: 'production', PORT: verifyPort },
   stdio: ['ignore', 'pipe', 'pipe']
 });
 
@@ -82,7 +83,7 @@ setTimeout(() => {
   console.log(`${colors.cyan}Step 2: Checking for runtime errors...${colors.reset}\n`);
 
   // Run a simple curl to trigger page load
-  const curl = spawn('curl', ['-s', '-o', '/dev/null', '-w', '%{http_code}', 'http://localhost:3010'], {
+  const curl = spawn('curl', ['-s', '-o', '/dev/null', '-w', '%{http_code}', `http://localhost:${verifyPort}`], {
     stdio: 'ignore'
   });
 
