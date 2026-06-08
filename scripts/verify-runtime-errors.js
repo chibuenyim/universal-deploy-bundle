@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 
 /**
- * Runtime Error Verification Script (PROPER VERSION)
+ * Runtime Error Verification Script (STRICT MODE)
  *
  * Actually RUNS the built application in a REAL browser and checks for runtime errors
  * This catches client-side exceptions, ChunkLoadError, hydration issues, etc.
+ *
+ * STRICT MODE: ALL errors must be fixed - no leniency, no tolerance
  *
  * Usage: node scripts/verify-runtime-errors.js
  */
@@ -46,10 +48,12 @@ async function startServer() {
 
   const { spawn } = require('child_process');
 
-  const server = spawn('npm', ['run', 'start'], {
+  const nextCmd = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+  const server = spawn(nextCmd, ['next', 'start', '-p', verifyPort], {
     cwd: process.cwd(),
-    env: { ...process.env, NODE_ENV: 'production', PORT: verifyPort },
-    stdio: ['ignore', 'pipe', 'pipe']
+    env: { ...process.env, NODE_ENV: 'production' },
+    stdio: ['ignore', 'pipe', 'pipe'],
+    shell: true
   });
 
   let serverReady = false;
@@ -267,7 +271,7 @@ async function verifyWithBrowser() {
 
 async function checkResults(server) {
   console.log(`${colors.blue}${'='.repeat(80)}${colors.reset}`);
-  console.log(`${colors.blue}📊 Verification Results${colors.reset}`);
+  console.log(`${colors.blue}📊 Verification Results (STRICT MODE)${colors.reset}`);
   console.log(`${colors.blue}${'='.repeat(80)}${colors.reset}\n`);
 
   // Kill server
@@ -277,77 +281,50 @@ async function checkResults(server) {
   console.log(`Warnings: ${colors.yellow}${allWarnings.length}${colors.reset}`);
   console.log(`Chunk load errors: ${colors.red}${chunkErrors.length}${colors.reset}\n`);
 
-  // Categorize errors
-  const criticalErrors = allErrors.filter(e =>
-    e.type === 'pageerror' ||
-    e.type === 'ChunkLoadError' ||
-    (e.type === 'response_error' && (e.status >= 400 || e.contentType?.includes('text/html')))
-  );
+  const totalErrors = allErrors.length + chunkErrors.length;
 
-  if (criticalErrors.length > 0) {
+  // STRICT MODE: ANY error is a failure
+  if (totalErrors > 0) {
     console.log(`${colors.red}${'='.repeat(80)}${colors.reset}`);
-    console.log(`${colors.red}❌ CRITICAL ERRORS DETECTED${colors.reset}`);
+    console.log(`${colors.red}❌ FAILED: ${totalErrors} error(s) detected${colors.reset}`);
     console.log(`${colors.red}${'='.repeat(80)}${colors.reset}\n`);
+    console.log(`${colors.red}STRICT MODE: All errors must be fixed before deployment${colors.reset}\n`);
 
-    console.log(`${colors.red}The following critical errors must be fixed:${colors.reset}\n`);
+    if (allErrors.length > 0) {
+      console.log(`${colors.red}Runtime Errors:${colors.reset}\n`);
+      allErrors.forEach((error, index) => {
+        console.log(`${colors.red}${index + 1}. ${error.type}${colors.reset}`);
+        if (error.url) console.log(`   URL: ${error.url}`);
+        if (error.text) console.log(`   Error: ${error.text}`);
+        if (error.status) console.log(`   Status: ${error.status}`);
+        if (error.failure) console.log(`   Failure: ${error.failure?.errorText || error.failure}`);
+        if (error.location) console.log(`   Location: ${error.location}`);
+        console.log('');
+      });
+    }
 
-    criticalErrors.forEach((error, index) => {
-      console.log(`${colors.red}${index + 1}. ${error.type}${colors.reset}`);
-      if (error.url) console.log(`   URL: ${error.url}`);
-      if (error.text) console.log(`   Error: ${error.text}`);
-      if (error.status) console.log(`   Status: ${error.status}`);
-      if (error.contentType) console.log(`   Content-Type: ${error.contentType}`);
-      if (error.failure) console.log(`   Failure: ${error.failure}`);
-      console.log('');
-    });
+    if (chunkErrors.length > 0) {
+      console.log(`${colors.red}Chunk Load Errors:${colors.reset}\n`);
+      chunkErrors.forEach((error, index) => {
+        console.log(`${colors.red}${index + 1}. Failed to load: ${error.url}${colors.reset}`);
+        console.log(`   Failure: ${error.failure?.errorText || error.failure}`);
+        console.log('');
+      });
+    }
 
-    console.log(`${colors.red}Deployment blocked - Fix critical errors before deploying${colors.reset}\n`);
+    console.log(`${colors.red}🚫 DEPLOYMENT BLOCKED - Fix all errors above${colors.reset}\n`);
     process.exit(1);
   }
 
-  if (allErrors.length > 0) {
-    console.log(`${colors.yellow}${'='.repeat(80)}${colors.reset}`);
-    console.log(`${colors.yellow}⚠ NON-CRITICAL ERRORS DETECTED${colors.reset}`);
-    console.log(`${colors.yellow}${'='.repeat(80)}${colors.reset}\n`);
+  // SUCCESS!
+  console.log(`${colors.green}${'='.repeat(80)}${colors.reset}`);
+  console.log(`${colors.green}✅ PASSED: No runtime errors detected${colors.reset}`);
+  console.log(`${colors.green}✅ STRICT MODE: Zero errors confirmed${colors.reset}`);
+  console.log(`${colors.green}🚀 READY FOR DEPLOYMENT${colors.reset}`);
+  console.log(`${colors.green}${'='.repeat(80)}${colors.reset}\n`);
 
-    console.log(`${colors.yellow}The following errors were found (non-critical):${colors.reset}\n`);
-
-    allErrors.slice(0, 10).forEach((error, index) => {
-      console.log(`${colors.yellow}${index + 1}. ${error.type}${colors.reset}`);
-      if (error.text) console.log(`   ${error.text}`);
-      console.log('');
-    });
-
-    if (allErrors.length > 10) {
-      console.log(`${colors.yellow}... and ${allErrors.length - 10} more errors${colors.reset}\n`);
-    }
-  }
-
-  if (chunkErrors.length > 0) {
-    console.log(`${colors.red}${'='.repeat(80)}${colors.reset}`);
-    console.log(`${colors.red}❌ CHUNK LOAD ERRORS (CRITICAL)${colors.reset}`);
-    console.log(`${colors.red}${'='.repeat(80)}${colors.reset}\n`);
-
-    chunkErrors.forEach((error, index) => {
-      console.log(`${colors.red}${index + 1}. Failed to load: ${error.url}${colors.reset}`);
-      console.log(`   Failure: ${error.failure}`);
-      console.log('');
-    });
-
-    console.log(`${colors.red}This indicates a web server configuration issue.${colors.reset}`);
-    console.log(`${colors.red}Check nginx/apache configuration for chunk serving.${colors.reset}\n`);
-    process.exit(1);
-  }
-
-  if (allErrors.length === 0 && chunkErrors.length === 0) {
-    console.log(`${colors.green}${'='.repeat(80)}${colors.reset}`);
-    console.log(`${colors.green}✅ PASSED: No runtime errors detected${colors.reset}`);
-    console.log(`${colors.green}   Deployment approved - production ready${colors.reset}`);
-    console.log(`${colors.green}${'='.repeat(80)}${colors.reset}\n`);
-
-    if (allWarnings.length > 0) {
-      console.log(`${colors.yellow}⚠ Note: ${allWarnings.length} warnings detected (non-blocking)${colors.reset}\n`);
-    }
+  if (allWarnings.length > 0) {
+    console.log(`${colors.yellow}ℹ️  Note: ${allWarnings.length} warnings detected (non-blocking)${colors.reset}\n`);
   }
 }
 
