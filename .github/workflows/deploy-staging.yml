@@ -40,7 +40,8 @@ jobs:
       - name: Install dependencies
         run: |
           cd frontend
-          npm ci --legacy-peer-deps
+          rm -rf node_modules
+          npm install
           echo "✅ Dependencies installed"
 
       - name: Zero-error verification

@@ -39,7 +39,8 @@ jobs:
             git reset --hard origin/master
 
             cd frontend
-            npm ci
+            rm -rf node_modules
+            npm install
 
             echo "🔍 Running zero-error verification..."
             npm run verify-zero-errors
