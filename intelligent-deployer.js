@@ -81,20 +81,121 @@ class IntelligentDeployer {
     if (!targetDir) throw new Error(`No deployment directory found for environment: ${this.env}`);
 
     this.log(`Using deployment directory: ${targetDir.path}`, "info");
+
+    // TRULY UNIVERSAL: Auto-discover ports from PM2 and nginx
+    const discoveredPorts = this.discoverPorts();
+
     this.config = {
       directory: targetDir.path,
       database: `cheapestdata_${this.env === "production" ? "prod" : this.env}`,
-      frontendPort: this.env === "staging" ? 3001 : 3000,
-      backendPort: this.env === "staging" ? 3021 : 3020,
+      frontendPort: discoveredPorts.frontend,
+      backendPort: discoveredPorts.backend,
       pm2Env: this.env,
       url: this.env === "production" ? "https://cheapestdata.com" : "https://staging.cheapestdata.com",
       branch: this.env === "production" ? "master" : "staging",
+      serverIP: discoveredPorts.serverIP || "80.65.211.16", // Auto-discovered server IP
     };
 
     this.log("Auto-configuration complete:", "info");
     Object.entries(this.config).forEach(([key, value]) => {
       this.log(`  ${key}: ${value}`, "info");
     });
+  }
+
+  /**
+   * AUTO-DISCOVER PORTS: Truly universal - detects actual ports in use
+   * Checks PM2 processes and nginx configuration to find correct ports
+   */
+  discoverPorts() {
+    this.log("Auto-discovering port configuration...", "step");
+
+    let frontendPort = null;
+    let backendPort = null;
+    let serverIP = null;
+
+    try {
+      // Method 1: Check PM2 processes for actual ports in use
+      this.log("Checking PM2 processes for port configuration...", "info");
+      const pm2Output = execSync(`PM2_HOME=/etc/.pm2 pm2 jlist`, { encoding: "utf-8" });
+      const processes = JSON.parse(pm2Output);
+
+      const frontendProcess = processes.find(p => p.name === `${this.env}-frontend`);
+      const backendProcess = processes.find(p => p.name === `${this.env}-backend`);
+
+      if (frontendProcess) {
+        // Try to get port from process description or parse it
+        const portMatch = frontendProcess.pm2_env?.env?.PORT || frontendProcess.pm2_env?.env?.PORT;
+        if (portMatch) {
+          frontendPort = parseInt(portMatch);
+        }
+      }
+
+      if (backendProcess) {
+        const portMatch = backendProcess.pm2_env?.env?.PORT || backendProcess.pm2_env?.env?.PORT;
+        if (portMatch) {
+          backendPort = parseInt(portMatch);
+        }
+      }
+
+      this.log(`PM2 discovery: Frontend port=${frontendPort}, Backend port=${backendPort}`, "info");
+    } catch (error) {
+      this.log(`PM2 port discovery failed: ${error.message}`, "warning");
+    }
+
+    try {
+      // Method 2: Check nginx configuration for expected ports
+      this.log("Checking nginx configuration for port configuration...", "info");
+      const domain = this.env === "production" ? "cheapestdata.com" : "staging.cheapestdata.com";
+      const findCmd = `find /etc/nginx/sites-enabled/ -type f -exec grep -l '${domain}' {} \\; 2>/dev/null | head -1`;
+      const configPath = execSync(findCmd, { encoding: "utf-8" }).trim();
+
+      if (configPath) {
+        const nginxConfig = execSync(`cat ${configPath}`, { encoding: "utf-8" });
+
+        // Extract ports from nginx proxy_pass directives
+        const portMatches = nginxConfig.matchAll(/proxy_pass[^:]*:(\d+)/g);
+        const ports = Array.from(portMatches).map(m => parseInt(m[1]));
+
+        // Determine which is frontend and which is backend
+        // Frontend is typically for location / and /_next/
+        // Backend is for location /api/ and /socket.io/
+        const frontendLocation = nginxConfig.match(/location\s+\/.*?proxy_pass[^:]*:(\d+)/s);
+        const backendLocation = nginxConfig.match(/location\s+\/api.*?proxy_pass[^:]*:(\d+)/s);
+
+        if (frontendLocation) frontendPort = parseInt(frontendLocation[1]);
+        if (backendLocation) backendPort = parseInt(backendLocation[1]);
+
+        this.log(`Nginx discovery: Frontend port=${frontendPort}, Backend port=${backendPort}`, "info");
+
+        // Discover server IP from nginx config or system
+        try {
+          serverIP = execSync("hostname -I | awk '{print $1}'", { encoding: "utf-8" }).trim();
+        } catch {
+          serverIP = "80.65.211.16"; // Fallback to known server IP
+        }
+      }
+    } catch (error) {
+      this.log(`Nginx port discovery failed: ${error.message}`, "warning");
+    }
+
+    // Method 3: Fallback to environment-specific defaults based on server documentation
+    if (!frontendPort || !backendPort) {
+      this.log("Using documented server port configuration...", "info");
+      if (this.env === "staging") {
+        frontendPort = frontendPort || 3021; // Staging frontend
+        backendPort = backendPort || 3020;  // Staging backend
+      } else {
+        frontendPort = frontendPort || 3010; // Production frontend
+        backendPort = backendPort || 3005;  // Production backend
+      }
+    }
+
+    this.log(`✅ Discovered configuration:`, "info");
+    this.log(`  Frontend: ${frontendPort}`, "info");
+    this.log(`  Backend: ${backendPort}`, "info");
+    this.log(`  Server IP: ${serverIP}`, "info");
+
+    return { frontend: frontendPort, backend: backendPort, serverIP };
   }
 
   exec(command, description, throwOnError = true) {
@@ -392,39 +493,51 @@ class IntelligentDeployer {
         this.log(`  Frontend (pages): ${frontendPort}`, "info");
         this.log(`  Backend (API): ${backendPort}`, "info");
 
-        // SMART FIX: Only fix frontend routes, leave API routes alone
-        // Common issue: Frontend routes (/) pointing to backend port (3021) instead of frontend port (3001)
+        // SMART FIX: Fix ALL wrong ports, not just when pointing to backend port
+        // Check if frontend routes are pointing to ANY port other than frontendPort
 
         let frontendNeedsFix = false;
         let backendNeedsFix = false;
 
+        // Extract actual port from frontend location block using better regex
+        // Match ONLY within location / block up to the next location or closing brace
+        const frontendBlock = fullConfig.match(/location\s+\/\s*\{([^}]*)\}/s);
+        const actualFrontendPort = frontendBlock ?
+          parseInt(frontendBlock[1].match(/proxy_pass[^:]*:(\d+)/)?.[1] || '0') : null;
+
         // Check if frontend routes are pointing to wrong port
-        const frontendRoutes = ["location /", "location ~ /", "location /login", "location /services"];
-        for (const route of frontendRoutes) {
-          if (fullConfig.includes(route) && fullConfig.includes(`:${backendPort}`)) {
-            this.log(`❌ Frontend route ${route} is pointing to backend port ${backendPort}`, "error");
-            frontendNeedsFix = true;
-          }
+        if (actualFrontendPort && actualFrontendPort !== frontendPort) {
+          this.log(`❌ Frontend route is pointing to port ${actualFrontendPort}, should be ${frontendPort}`, "error");
+          frontendNeedsFix = true;
+          // Store the actual wrong port for fixing
+          this.config.actualFrontendPort = actualFrontendPort;
         }
 
         // Check if API routes are pointing to wrong port
-        if (fullConfig.includes("location /api") && fullConfig.includes(`:${frontendPort}`)) {
-          this.log(`❌ API route is pointing to frontend port ${frontendPort}`, "error");
+        const apiBlock = fullConfig.match(/location\s+\/api\/\s*\{([^}]*)\}/s);
+        const actualBackendPort = apiBlock ?
+          parseInt(apiBlock[1].match(/proxy_pass[^:]*:(\d+)/)?.[1] || '0') : null;
+
+        if (actualBackendPort && actualBackendPort !== backendPort) {
+          this.log(`❌ API route is pointing to port ${actualBackendPort}, should be ${backendPort}`, "error");
           backendNeedsFix = true;
+          this.config.actualBackendPort = actualBackendPort;
         }
 
         if (frontendNeedsFix) {
-          this.log(`Auto-fixing: Frontend routes ${backendPort} → ${frontendPort}`, "step");
-          // Fix frontend routes: replace backend port with frontend port
-          const fixFrontendCmd = `sed -i 's|proxy_pass http://127\\.0\\.0\\.1:${backendPort}|proxy_pass http://127.0.0.1:${frontendPort}|g' ${configPath}`;
+          const wrongPort = this.config.actualFrontendPort;
+          this.log(`Auto-fixing: Frontend routes ${wrongPort} → ${frontendPort}`, "step");
+          // Fix frontend routes: replace wrong port with correct frontend port
+          const fixFrontendCmd = `sed -i 's|proxy_pass http://127\\.0\\.0\\.1:${wrongPort}|proxy_pass http://127.0.0.1:${frontendPort}|g' ${configPath}`;
           this.exec(fixFrontendCmd, "Fix frontend proxy port", false);
           this.log(`✅ Frontend routes fixed: now pointing to port ${frontendPort}`, "info");
         }
 
         if (backendNeedsFix) {
-          this.log(`Auto-fixing: API routes ${frontendPort} → ${backendPort}`, "step");
-          // Fix API routes: replace frontend port with backend port
-          const fixBackendCmd = `sed -i 's|proxy_pass http://127\\.0\\.0\\.1:${frontendPort}|proxy_pass http://127.0.0.1:${backendPort}|g' ${configPath}`;
+          const wrongPort = this.config.actualBackendPort;
+          this.log(`Auto-fixing: API routes ${wrongPort} → ${backendPort}`, "step");
+          // Fix API routes: replace wrong port with correct backend port
+          const fixBackendCmd = `sed -i 's|proxy_pass http://127\\.0\\.0\\.1:${wrongPort}|proxy_pass http://127.0.0.1:${backendPort}|g' ${configPath}`;
           this.exec(fixBackendCmd, "Fix API proxy port", false);
           this.log(`✅ API routes fixed: now pointing to port ${backendPort}`, "info");
         }
@@ -699,6 +812,7 @@ class IntelligentDeployer {
     try {
       this.log(`=== STARTING FAST ${this.env.toUpperCase()} DEPLOYMENT ===`, "step");
       this.log(`Instant error catching enabled (SSH-like speed)`, "info");
+      const startTime = Date.now();
 
       // AUTO-CONFIGURE FIRST: Discover deployment directory before running commands
       this.autoConfigure();
@@ -710,8 +824,28 @@ class IntelligentDeployer {
       this.autoRecover();
 
       this.pullCode();
-      this.buildBackend();
-      this.buildFrontend();
+
+      // TIME OPTIMIZATION: Detect changes and skip unnecessary builds
+      const changes = this.detectChanges();
+
+      if (changes.backendChanged || changes.frontendChanged) {
+        // TIME OPTIMIZATION: Parallel builds when both changed (saves ~3 min)
+        if (changes.backendChanged && changes.frontendChanged) {
+          this.log("Both backend and frontend changed - building in parallel...", "step");
+          await Promise.all([
+            this.buildBackend(),
+            this.buildFrontend()
+          ]);
+        } else if (changes.backendChanged) {
+          this.log("Only backend changed - skipping frontend build", "info");
+          this.buildBackend();
+        } else if (changes.frontendChanged) {
+          this.log("Only frontend changed - skipping backend build", "info");
+          this.buildFrontend();
+        }
+      } else {
+        this.log("✅ No code changes detected - skipping builds (saves ~10 min)", "info");
+      }
 
       // BUILT-IN NGINX FIX: Direct fixing without external scripts
       this.fixNginxConfig();
@@ -722,8 +856,9 @@ class IntelligentDeployer {
       // COMPREHENSIVE VERIFICATION: Real checks, not just HTTP 200
       const verified = await this.comprehensiveVerification();
 
+      const duration = Math.round((Date.now() - startTime) / 1000);
       this.log(`=== ${this.env.toUpperCase()} DEPLOYMENT ${verified ? "SUCCESS" : "FAILED"} ===`, verified ? "info" : "error");
-      this.log(`Total deployment time with comprehensive verification`, "info");
+      this.log(`Total deployment time: ${duration}s (${Math.round(duration/60)}m)`, "info");
 
       process.exit(verified ? 0 : 1);
 
@@ -732,6 +867,36 @@ class IntelligentDeployer {
       this.log("Errors encountered:", "error");
       this.errors.forEach(err => this.log(`  - ${err}`, "error"));
       process.exit(1);
+    }
+  }
+
+  /**
+   * SMART CHANGE DETECTION: Detect if backend/frontend changed
+   * Skips builds if no changes (saves ~10 min)
+   */
+  detectChanges() {
+    this.log("Detecting code changes...", "step");
+
+    try {
+      // Get last commit hash
+      const lastCommit = this.exec("git rev-parse HEAD", "Get last commit", false).trim();
+
+      // Check if backend changed
+      const backendDiff = this.exec("git diff HEAD~1 HEAD --name-only | grep -E '^backend/' || true", "Check backend changes", false).trim();
+      const backendChanged = backendDiff.length > 0;
+
+      // Check if frontend changed
+      const frontendDiff = this.exec("git diff HEAD~1 HEAD --name-only | grep -E '^frontend/' || true", "Check frontend changes", false).trim();
+      const frontendChanged = frontendDiff.length > 0;
+
+      this.log(`Backend changed: ${backendChanged ? "YES" : "NO"}`, backendChanged ? "info" : "step");
+      this.log(`Frontend changed: ${frontendChanged ? "YES" : "NO"}`, frontendChanged ? "info" : "step");
+
+      return { backendChanged, frontendChanged, lastCommit };
+
+    } catch (error) {
+      this.log(`Change detection failed, assuming both changed: ${error.message}`, "warning");
+      return { backendChanged: true, frontendChanged: true, lastCommit: null };
     }
   }
 }
