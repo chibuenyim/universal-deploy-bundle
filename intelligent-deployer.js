@@ -21,12 +21,118 @@ class IntelligentDeployer {
     this.config = null;
     this.errors = [];
     this.warnings = [];
+
+    // SSH Configuration for remote deployment
+    this.ssh = {
+      host: process.env.SSH_HOST || null,
+      user: process.env.SSH_USER || null,
+      password: process.env.SSH_PASSWORD || null,
+      keyPath: process.env.SSH_KEY_PATH || null,
+      port: process.env.SSH_PORT || '22'
+    };
+
+    // Auto-detect if running in SSH mode
+    this.isRemote = Boolean(this.ssh.host && this.ssh.user);
+    if (this.isRemote) {
+      this.log(`SSH Remote Mode: ${this.ssh.user}@${this.ssh.host}`, "info");
+    }
   }
 
   log(message, level = "info") {
     const timestamp = new Date().toISOString();
     const prefix = { info: "✅", warning: "⚠️", error: "❌", step: "🔄" }[level] || "ℹ️";
     console.log(`${timestamp} ${prefix} [${this.env.toUpperCase()}] ${message}`);
+  }
+
+  /**
+   * Execute command locally or via SSH
+   */
+  exec(command, description = "Command", allowFailure = true) {
+    try {
+      let actualCommand = command;
+
+      if (this.isRemote) {
+        // Wrap command for SSH execution
+        actualCommand = this.buildSSHCommand(command);
+      }
+
+      const result = execSync(actualCommand, {
+        encoding: "utf8",
+        stdio: allowFailure ? "pipe" : "inherit"
+      });
+
+      return result.trim();
+    } catch (error) {
+      if (allowFailure) {
+        this.log(`${description} - FAILED: ${error.message}`, "error");
+        throw error;
+      } else {
+        return "";
+      }
+    }
+  }
+
+  /**
+   * Build SSH command for remote execution
+   */
+  buildSSHCommand(command) {
+    let sshCmd = "";
+
+    // Use sshpass for password authentication
+    if (this.ssh.password && !this.ssh.keyPath) {
+      sshCmd = `sshpass -p '${this.ssh.password}'`;
+    }
+
+    sshCmd += " ssh";
+
+    // Add SSH key if provided
+    if (this.ssh.keyPath) {
+      sshCmd += ` -i ${this.ssh.keyPath}`;
+    }
+
+    // Add port if not default
+    if (this.ssh.port !== '22') {
+      sshCmd += ` -p ${this.ssh.port}`;
+    }
+
+    // Strict host key checking off for automation
+    sshCmd += ` -o StrictHostKeyChecking=no`;
+    sshCmd += ` -o UserKnownHostsFile=/dev/null`;
+
+    // Add host
+    sshCmd += ` ${this.ssh.user}@${this.ssh.host}`;
+
+    // Wrap command in quotes
+    sshCmd += ` "${command.replace(/"/g, '\\"')}"`;
+
+    return sshCmd;
+  }
+
+  /**
+   * Setup SSH password authentication (install sshpass if needed)
+   */
+  setupSSHAuth() {
+    if (!this.isRemote) return;
+
+    if (this.ssh.password && !this.ssh.keyPath) {
+      this.log("Setting up SSH password authentication...", "step");
+
+      // Check if sshpass is installed
+      try {
+        this.exec("which sshpass", "Check sshpass", false);
+        this.log("✅ sshpass is available", "info");
+      } catch {
+        this.log("⚠️ sshpass not found, installing...", "warning");
+        try {
+          // Try installing sshpass
+          this.exec("apt-get update && apt-get install -y sshpass", "Install sshpass");
+          this.log("✅ sshpass installed successfully", "info");
+        } catch {
+          this.log("❌ Failed to install sshpass - password auth may not work", "error");
+          this.log("   Please install sshpass manually or use SSH key authentication", "warning");
+        }
+      }
+    }
   }
 
   discoverDeploymentDirectories() {
@@ -457,122 +563,98 @@ class IntelligentDeployer {
   }
 
   /**
-   * BUILT-IN NGINX FIX: Direct nginx fixing without external scripts
-   * Auto-detects and fixes nginx proxy configuration
-   * TRULY UNIVERSAL: Auto-knows correct port configuration
+   * BUILT-IN NGINX FIX: Direct fixing without detection
+   * Simply replaces wrong ports with correct ones - no detection needed
    */
   fixNginxConfig() {
-    this.log("Checking and fixing nginx configuration...", "step");
+    this.log("Fixing nginx configuration...", "step");
 
     try {
-      // Find nginx config file for this environment
       const domain = this.env === "production" ? "cheapestdata.com" : "staging.cheapestdata.com";
-      this.log(`Looking for nginx config for: ${domain}`, "info");
+      const configPath = execSync(`find /etc/nginx/sites-enabled/ -type f -exec grep -l '${domain}' {} \\; 2>/dev/null | head -1`, { encoding: "utf-8" }).trim();
 
-      try {
-        // Find nginx config
-        const findCmd = `find /etc/nginx/sites-enabled/ -type f -exec grep -l '${domain}' {} \\; 2>/dev/null | head -1`;
-        const configPath = this.exec(findCmd, "Find nginx config", false).trim();
+      if (!configPath) {
+        this.log("No nginx config found", "info");
+        return;
+      }
 
-        if (!configPath || configPath === "") {
-          this.log("No nginx config found (might be using default)", "info");
-          return;
-        }
+      this.log(`Found nginx config: ${configPath}`, "info");
 
-        this.log(`Found nginx config: ${configPath}`, "info");
+      const frontendPort = this.config.frontendPort;
+      const backendPort = this.config.backendPort;
 
-        // Show FULL nginx config for diagnosis
-        const fullConfig = this.exec(`cat ${configPath}`, "Show full nginx config", false);
-        this.log(`Full nginx config:\n${fullConfig}`, "info");
+      this.log(`Applying port configuration:`, "info");
+      this.log(`  Frontend (pages): ${frontendPort}`, "info");
+      this.log(`  Backend (API): ${backendPort}`, "info");
 
-        // Universal port detection
-        const frontendPort = this.config.frontendPort;  // 3001 (staging) or 3000 (prod)
-        const backendPort = this.config.backendPort;    // 3021 (staging) or 3020 (prod)
+      // FIX: Just replace all wrong ports directly
+      // Common wrong ports for staging: 3001, 3010, 3011
+      const commonWrongPorts = ['3001', '3010', '3011'];
 
-        this.log(`Universal port configuration:`, "info");
-        this.log(`  Frontend (pages): ${frontendPort}`, "info");
-        this.log(`  Backend (API): ${backendPort}`, "info");
+      let fixed = false;
+      for (const wrongPort of commonWrongPorts) {
+        if (wrongPort !== frontendPort.toString()) {
+          const checkCmd = `grep -c "proxy_pass http://127.0.0.1:${wrongPort}" ${configPath} 2>/dev/null || echo "0"`;
+          const count = parseInt(execSync(checkCmd, { encoding: "utf-8" }).trim());
 
-        // SMART FIX: Fix ALL wrong ports, not just when pointing to backend port
-        // Check if frontend routes are pointing to ANY port other than frontendPort
+          if (count > 0) {
+            this.log(`Found ${count} occurrences of wrong port ${wrongPort}`, "info");
 
-        let frontendNeedsFix = false;
-        let backendNeedsFix = false;
+            // Fix frontend routes (location / and location /_next/)
+            const fixFrontend = `sed -i '/location\\/\\s*\\/_/s|proxy_pass http://127\\.0\\.0\\.1:${wrongPort}|proxy_pass http://127.0.0.1:${frontendPort}|g' ${configPath}`;
+            execSync(fixFrontend, { encoding: "utf-8" });
 
-        // Extract actual port from frontend location block using better regex
-        // Match ONLY within location / block up to the next location or closing brace
-        const frontendBlock = fullConfig.match(/location\s+\/\s*\{([^}]*)\}/s);
-        const actualFrontendPort = frontendBlock ?
-          parseInt(frontendBlock[1].match(/proxy_pass[^:]*:(\d+)/)?.[1] || '0') : null;
+            // Fix standalone location /
+            const fixRoot = `sed -i '/location\\/\\s*\\/\\s*{/s|proxy_pass http://127\\.0\\.0\\.1:${wrongPort}|proxy_pass http://127.0.0.1:${frontendPort}|g' ${configPath}`;
+            execSync(fixRoot, { encoding: "utf-8" });
 
-        // Check if frontend routes are pointing to wrong port
-        if (actualFrontendPort && actualFrontendPort !== frontendPort) {
-          this.log(`❌ Frontend route is pointing to port ${actualFrontendPort}, should be ${frontendPort}`, "error");
-          frontendNeedsFix = true;
-          // Store the actual wrong port for fixing
-          this.config.actualFrontendPort = actualFrontendPort;
-        }
-
-        // Check if API routes are pointing to wrong port
-        const apiBlock = fullConfig.match(/location\s+\/api\/\s*\{([^}]*)\}/s);
-        const actualBackendPort = apiBlock ?
-          parseInt(apiBlock[1].match(/proxy_pass[^:]*:(\d+)/)?.[1] || '0') : null;
-
-        if (actualBackendPort && actualBackendPort !== backendPort) {
-          this.log(`❌ API route is pointing to port ${actualBackendPort}, should be ${backendPort}`, "error");
-          backendNeedsFix = true;
-          this.config.actualBackendPort = actualBackendPort;
-        }
-
-        if (frontendNeedsFix) {
-          const wrongPort = this.config.actualFrontendPort;
-          this.log(`Auto-fixing: Frontend routes ${wrongPort} → ${frontendPort}`, "step");
-          // Fix frontend routes: replace wrong port with correct frontend port
-          const fixFrontendCmd = `sed -i 's|proxy_pass http://127\\.0\\.0\\.1:${wrongPort}|proxy_pass http://127.0.0.1:${frontendPort}|g' ${configPath}`;
-          this.exec(fixFrontendCmd, "Fix frontend proxy port", false);
-          this.log(`✅ Frontend routes fixed: now pointing to port ${frontendPort}`, "info");
-        }
-
-        if (backendNeedsFix) {
-          const wrongPort = this.config.actualBackendPort;
-          this.log(`Auto-fixing: API routes ${wrongPort} → ${backendPort}`, "step");
-          // Fix API routes: replace wrong port with correct backend port
-          const fixBackendCmd = `sed -i 's|proxy_pass http://127\\.0\\.0\\.1:${wrongPort}|proxy_pass http://127.0.0.1:${backendPort}|g' ${configPath}`;
-          this.exec(fixBackendCmd, "Fix API proxy port", false);
-          this.log(`✅ API routes fixed: now pointing to port ${backendPort}`, "info");
-        }
-
-        if (frontendNeedsFix || backendNeedsFix) {
-          // Test nginx configuration
-          this.log("Testing nginx configuration...", "step");
-          const testResult = this.exec("nginx -t", "Test nginx config", false);
-
-          if (testResult.includes("successful") || testResult.includes("syntax is ok")) {
-            this.log("✅ Nginx configuration test passed", "info");
-
-            // Reload nginx
-            this.log("Reloading nginx...", "step");
-            this.exec("systemctl reload nginx", "Reload nginx", false);
-            this.log("✅ Nginx reloaded successfully", "info");
-
-            // Show fixed config
-            const fixedConfig = this.exec(`cat ${configPath}`, "Show fixed nginx config", false);
-            this.log(`Fixed nginx config:\n${fixedConfig}`, "info");
-          } else {
-            this.log("❌ Nginx configuration test failed", "error");
-            this.log(testResult, "error");
+            this.log(`✅ Fixed port ${wrongPort} → ${frontendPort} for frontend routes`, "info");
+            fixed = true;
           }
-        } else {
-          this.log("✅ Nginx configuration already correct", "info");
         }
 
-      } catch (nginxError) {
-        this.log(`Nginx fix skipped: ${nginxError.message}`, "warning");
-        // Don't fail deployment if nginx fix fails
+        if (wrongPort !== backendPort.toString()) {
+          const checkCmd = `grep -c "location /api" ${configPath} 2>/dev/null | head -1 | xargs -I{} grep -c "proxy_pass http://127.0.0.1:${wrongPort}" {} || echo "0"`;
+
+          try {
+            const count = parseInt(execSync(checkCmd, { encoding: "utf-8" }).trim());
+            if (count > 0) {
+              // Fix API routes
+              const fixApi = `sed -i '/location\\/api/s|proxy_pass http://127\\.0\\.0\\.1:${wrongPort}|proxy_pass http://127.0.0.1:${backendPort}|g' ${configPath}`;
+              execSync(fixApi, { encoding: "utf-8" });
+
+              this.log(`✅ Fixed port ${wrongPort} → ${backendPort} for API routes`, "info");
+              fixed = true;
+            }
+          } catch (e) {
+            // API might not use this port, continue
+          }
+        }
+      }
+
+      if (fixed) {
+        // Test nginx configuration
+        this.log("Testing nginx configuration...", "step");
+        const testResult = execSync("nginx -t 2>&1", { encoding: "utf-8" });
+        this.log(`Nginx test output: ${testResult}`, "info");
+
+        if (testResult.includes("successful") || testResult.includes("syntax is ok")) {
+          this.log("✅ Nginx configuration test passed", "info");
+
+          // Reload nginx
+          this.log("Reloading nginx...", "step");
+          execSync("systemctl reload nginx", { encoding: "utf-8" });
+          this.log("✅ Nginx reloaded successfully", "info");
+        } else {
+          this.log("❌ Nginx configuration test failed", "error");
+          this.log(testResult, "error");
+        }
+      } else {
+        this.log("✅ No port fixes needed (already correct)", "info");
       }
 
     } catch (error) {
-      this.log(`Nginx check skipped: ${error.message}`, "info");
+      this.log(`Nginx fix skipped: ${error.message}`, "warning");
     }
   }
 
@@ -590,6 +672,204 @@ class IntelligentDeployer {
     // FAST ERROR CHECK: Instant health check
     this.fastPM2HealthCheck(appName);
     this.log("Backend restarted successfully", "info");
+  }
+
+  /**
+   * AUTO-FIX PACKAGE.JSON PORT DEFAULT
+   * Ensures frontend starts on correct environment port
+   */
+  fixPackageJsonPort() {
+    this.log("Auto-fixing package.json port configuration...", "step");
+
+    try {
+      const packageJsonPath = `${this.config.directory}/frontend/package.json`;
+      const frontendPort = this.config.frontendPort;
+
+      // Check if package.json exists
+      if (!require('fs').existsSync(packageJsonPath)) {
+        this.log("No frontend package.json found", "info");
+        return;
+      }
+
+      const packageJson = JSON.parse(require('fs').readFileSync(packageJsonPath, 'utf8'));
+      const currentStartScript = packageJson.scripts?.start || "";
+
+      // Extract current default port from start script
+      const portMatch = currentStartScript.match(/\$\{PORT:-(\d+)\}/);
+      const currentDefaultPort = portMatch ? parseInt(portMatch[1]) : null;
+
+      this.log(`Current start script: "${currentStartScript}"`, "info");
+      if (currentDefaultPort) {
+        this.log(`Current default port: ${currentDefaultPort}`, "info");
+      }
+
+      // Fix if default port doesn't match environment port
+      if (currentDefaultPort && currentDefaultPort !== frontendPort) {
+        this.log(`⚠️ Wrong default port: ${currentDefaultPort} → should be ${frontendPort}`, "warning");
+
+        // Replace the default port in the start script
+        const newStartScript = currentStartScript.replace(
+          `\${PORT:-${currentDefaultPort}}`,
+          `\${PORT:-${frontendPort}}`
+        );
+
+        packageJson.scripts = packageJson.scripts || {};
+        packageJson.scripts.start = newStartScript;
+
+        // Write back to package.json
+        require('fs').writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2));
+
+        this.log(`✅ Fixed package.json start script: ${currentDefaultPort} → ${frontendPort}`, "info");
+        this.log(`New start script: "${newStartScript}"`, "info");
+      } else if (!currentDefaultPort) {
+        this.log("⚠️ No PORT environment variable in start script", "warning");
+        this.log("Adding PORT environment variable with correct default", "info");
+
+        // Add PORT variable if it doesn't exist
+        const newStartScript = currentStartScript.replace(
+          /next start/,
+          `next start -p \${PORT:-${frontendPort}}`
+        );
+
+        packageJson.scripts = packageJson.scripts || {};
+        packageJson.scripts.start = newStartScript;
+
+        require('fs').writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2));
+
+        this.log(`✅ Added PORT variable to start script`, "info");
+        this.log(`New start script: "${newStartScript}"`, "info");
+      } else {
+        this.log(`✅ Package.json port already correct (${frontendPort})`, "info");
+      }
+    } catch (error) {
+      this.log(`Package.json fix skipped: ${error.message}`, "warning");
+    }
+  }
+
+  /**
+   * VERIFY NGINX-FRONTEND CONNECTIVITY
+   * Tests if frontend is accessible and fixes nginx if needed
+   */
+  async verifyAndFixNginxFrontendConnectivity() {
+    this.log("Verifying nginx-to-frontend connectivity...", "step");
+
+    try {
+      const frontendPort = this.config.frontendPort;
+
+      // WAIT for frontend to fully start up (Next.js needs time)
+      this.log("Waiting for frontend to start up...", "info");
+      await new Promise(resolve => setTimeout(resolve, 5000)); // 5 second delay
+
+      // Test 1: Direct access to frontend port
+      this.log("Testing direct frontend access...", "info");
+      const directResult = this.exec(
+        `curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://127.0.0.1:${frontendPort}`,
+        "Direct frontend test",
+        false
+      ).trim();
+
+      this.log(`Direct frontend access: HTTP ${directResult}`, "info");
+
+      if (directResult !== "200") {
+        this.log(`⚠️ Frontend not responding on port ${frontendPort}`, "warning");
+        return; // Frontend issue, not nginx
+      }
+
+      // Test 2: Access through nginx
+      this.log("Testing access through nginx...", "info");
+      const nginxResult = this.exec(
+        `curl -s -o /dev/null -w "%{http_code}" --max-time 5 ${this.config.url}`,
+        "Nginx frontend test",
+        false
+      ).trim();
+
+      this.log(`Nginx frontend access: HTTP ${nginxResult}`, "info");
+
+      // DETECT MISMATCH: Direct works but nginx fails
+      if (directResult === "200" && (nginxResult !== "200" || nginxResult === "502")) {
+        this.log("⚠️ MISMATCH DETECTED: Frontend works directly but fails through nginx", "warning");
+        this.log("This indicates nginx configuration issue - fixing...", "info");
+
+        // Find all proxy_pass lines pointing to wrong ports
+        const domain = this.env === "production" ? "cheapestdata.com" : "staging.cheapestdata.com";
+        const configPath = this.exec(
+          `find /etc/nginx/sites-enabled/ -type f -exec grep -l '${domain}' {} \\; 2>/dev/null | head -1`,
+          "Find nginx config",
+          false
+        ).trim();
+
+        if (!configPath) {
+          this.log("No nginx config found", "warning");
+          return;
+        }
+
+        // Get all proxy_pass lines from the config
+        const nginxConfig = this.exec(`cat ${configPath}`, "Read nginx config", false);
+        const proxyPassLines = nginxConfig.match(/proxy_pass\s+http:\/\/[^;]+/g) || [];
+
+        this.log(`Found ${proxyPassLines.length} proxy_pass directives`, "info");
+
+        // Check each proxy_pass line
+        let fixed = false;
+        for (const line of proxyPassLines) {
+          const portMatch = line.match(/127\.0\.0\.1:(\d+)/);
+          if (!portMatch) continue;
+
+          const port = parseInt(portMatch[1]);
+
+          // Frontend routes should use frontendPort
+          // API routes should use backendPort
+          const isApiRoute = nginxConfig.substring(nginxConfig.indexOf(line) - 50, nginxConfig.indexOf(line)).includes('location /api');
+
+          const correctPort = isApiRoute ? this.config.backendPort : this.config.frontendPort;
+
+          if (port !== correctPort) {
+            this.log(`⚠️ Wrong port in proxy_pass: ${port} → should be ${correctPort}`, "warning");
+
+            // Fix this specific line using sed with context
+            const fixCmd = `sed -i 's|proxy_pass http://127.0.0.1:${port}|proxy_pass http://127.0.0.1:${correctPort}|g' ${configPath}`;
+            this.exec(fixCmd, `Fix port ${port} → ${correctPort}`);
+
+            this.log(`✅ Fixed proxy_pass port: ${port} → ${correctPort}`, "info");
+            fixed = true;
+          }
+        }
+
+        if (fixed) {
+          // Test and reload nginx
+          this.log("Testing nginx configuration...", "step");
+          const testResult = this.exec("nginx -t 2>&1", "Nginx test", false);
+
+          if (testResult.includes("successful") || testResult.includes("syntax is ok")) {
+            this.log("✅ Nginx configuration test passed", "info");
+
+            this.log("Reloading nginx...", "step");
+            this.exec("systemctl reload nginx", "Reload nginx");
+            this.log("✅ Nginx reloaded successfully", "info");
+
+            // Verify fix worked
+            this.log("Verifying fix...", "step");
+            setTimeout(() => {
+              const verifyResult = this.exec(
+                `curl -s -o /dev/null -w "%{http_code}" --max-time 5 ${this.config.url}`,
+                "Verify nginx fix",
+                false
+              ).trim();
+
+              if (verifyResult === "200") {
+                this.log("✅ Nginx-to-frontend connectivity verified!", "info");
+              } else {
+                this.log(`⚠️ Still getting HTTP ${verifyResult} after nginx fix`, "warning");
+              }
+            }, 2000); // Wait 2 seconds for nginx to fully reload
+          }
+        }
+      } else if (directResult === "200" && nginxResult === "200") {
+        this.log("✅ Nginx-to-frontend connectivity verified!", "info");
+      }
+    } catch (error) {
+      this.log(`Nginx connectivity verification skipped: ${error.message}`, "warning");
+    }
   }
 
   restartFrontend() {
@@ -817,6 +1097,9 @@ class IntelligentDeployer {
       // AUTO-CONFIGURE FIRST: Discover deployment directory before running commands
       this.autoConfigure();
 
+      // SETUP SSH AUTH: Configure SSH password/key authentication for remote deployment
+      this.setupSSHAuth();
+
       // AUTO-WARM RUNNER: Now we have config.directory set
       await this.warmRunner();
 
@@ -850,8 +1133,14 @@ class IntelligentDeployer {
       // BUILT-IN NGINX FIX: Direct fixing without external scripts
       this.fixNginxConfig();
 
+      // AUTO-FIX PACKAGE.JSON: Ensure frontend starts on correct port
+      this.fixPackageJsonPort();
+
       this.restartBackend();
       this.restartFrontend();
+
+      // VERIFY NGINX-FRONTEND CONNECTIVITY: Catch and fix any remaining nginx issues
+      await this.verifyAndFixNginxFrontendConnectivity();
 
       // COMPREHENSIVE VERIFICATION: Real checks, not just HTTP 200
       const verified = await this.comprehensiveVerification();
