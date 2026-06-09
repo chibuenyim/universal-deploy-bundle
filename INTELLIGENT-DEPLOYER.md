@@ -1,6 +1,6 @@
-# 🧠 Intelligent Deployer v2
+# 🧠 Intelligent Deployer v3
 
-Complete guide for Intelligent Deployer v2 - the flagship deployment agent with built-in intelligence.
+Complete guide for Intelligent Deployer v3 - the flagship deployment agent with built-in intelligence.
 
 ## Quick Start
 
