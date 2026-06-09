@@ -700,13 +700,15 @@ class IntelligentDeployer {
       this.log(`=== STARTING FAST ${this.env.toUpperCase()} DEPLOYMENT ===`, "step");
       this.log(`Instant error catching enabled (SSH-like speed)`, "info");
 
-      // AUTO-WARM RUNNER: Pre-warm to prevent stuck deployments
+      // AUTO-CONFIGURE FIRST: Discover deployment directory before running commands
+      this.autoConfigure();
+
+      // AUTO-WARM RUNNER: Now we have config.directory set
       await this.warmRunner();
 
       // AUTO-RECOVERY: Fix common infrastructure issues
       this.autoRecover();
 
-      this.autoConfigure();
       this.pullCode();
       this.buildBackend();
       this.buildFrontend();
@@ -717,7 +719,7 @@ class IntelligentDeployer {
       this.restartBackend();
       this.restartFrontend();
 
-      // COMPREHENSIVE VERIFICATION - Real checks, not just HTTP 200
+      // COMPREHENSIVE VERIFICATION: Real checks, not just HTTP 200
       const verified = await this.comprehensiveVerification();
 
       this.log(`=== ${this.env.toUpperCase()} DEPLOYMENT ${verified ? "SUCCESS" : "FAILED"} ===`, verified ? "info" : "error");
