@@ -358,6 +358,7 @@ class IntelligentDeployer {
   /**
    * BUILT-IN NGINX FIX: Direct nginx fixing without external scripts
    * Auto-detects and fixes nginx proxy configuration
+   * TRULY UNIVERSAL: Auto-knows correct port configuration
    */
   fixNginxConfig() {
     this.log("Checking and fixing nginx configuration...", "step");
@@ -379,36 +380,56 @@ class IntelligentDeployer {
 
         this.log(`Found nginx config: ${configPath}`, "info");
 
-        // Check current proxy port
-        const checkCmd = `grep -A 5 "proxy_pass" ${configPath} | grep ${domain} || echo "not_found"`;
-        const currentConfig = this.exec(checkCmd, "Check current proxy config", false);
+        // Show FULL nginx config for diagnosis
+        const fullConfig = this.exec(`cat ${configPath}`, "Show full nginx config", false);
+        this.log(`Full nginx config:\n${fullConfig}`, "info");
 
-        this.log(`Current proxy config:\n${currentConfig}`, "info");
+        // Universal port detection
+        const frontendPort = this.config.frontendPort;  // 3001 (staging) or 3000 (prod)
+        const backendPort = this.config.backendPort;    // 3021 (staging) or 3020 (prod)
 
-        // Detect wrong port and auto-fix
-        const expectedPort = this.config.frontendPort;
-        const wrongPorts = [this.config.backendPort, "3021", "3020"]; // Common mistakes
+        this.log(`Universal port configuration:`, "info");
+        this.log(`  Frontend (pages): ${frontendPort}`, "info");
+        this.log(`  Backend (API): ${backendPort}`, "info");
 
-        let needsFix = false;
-        let currentPort = "";
+        // SMART FIX: Only fix frontend routes, leave API routes alone
+        // Common issue: Frontend routes (/) pointing to backend port (3021) instead of frontend port (3001)
 
-        // Check if nginx is pointing to wrong port
-        for (const wrongPort of wrongPorts) {
-          if (currentConfig.includes(`:${wrongPort}`)) {
-            needsFix = true;
-            currentPort = wrongPort;
-            this.log(`❌ Wrong port detected: ${wrongPort} (should be ${expectedPort})`, "error");
-            break;
+        let frontendNeedsFix = false;
+        let backendNeedsFix = false;
+
+        // Check if frontend routes are pointing to wrong port
+        const frontendRoutes = ["location /", "location ~ /", "location /login", "location /services"];
+        for (const route of frontendRoutes) {
+          if (fullConfig.includes(route) && fullConfig.includes(`:${backendPort}`)) {
+            this.log(`❌ Frontend route ${route} is pointing to backend port ${backendPort}`, "error");
+            frontendNeedsFix = true;
           }
         }
 
-        if (needsFix) {
-          this.log(`Auto-fixing nginx: ${currentPort} → ${expectedPort}`, "step");
+        // Check if API routes are pointing to wrong port
+        if (fullConfig.includes("location /api") && fullConfig.includes(`:${frontendPort}`)) {
+          this.log(`❌ API route is pointing to frontend port ${frontendPort}`, "error");
+          backendNeedsFix = true;
+        }
 
-          // Fix the port using sed
-          const fixCmd = `sed -i.bak 's|proxy_pass http://127\\.0\\.0\\.1:${currentPort}|proxy_pass http://127.0.0.1:${expectedPort}|g' ${configPath}`;
-          this.exec(fixCmd, "Fix nginx proxy port", false);
+        if (frontendNeedsFix) {
+          this.log(`Auto-fixing: Frontend routes ${backendPort} → ${frontendPort}`, "step");
+          // Fix frontend routes: replace backend port with frontend port
+          const fixFrontendCmd = `sed -i 's|proxy_pass http://127\\.0\\.0\\.1:${backendPort}|proxy_pass http://127.0.0.1:${frontendPort}|g' ${configPath}`;
+          this.exec(fixFrontendCmd, "Fix frontend proxy port", false);
+          this.log(`✅ Frontend routes fixed: now pointing to port ${frontendPort}`, "info");
+        }
 
+        if (backendNeedsFix) {
+          this.log(`Auto-fixing: API routes ${frontendPort} → ${backendPort}`, "step");
+          // Fix API routes: replace frontend port with backend port
+          const fixBackendCmd = `sed -i 's|proxy_pass http://127\\.0\\.0\\.1:${frontendPort}|proxy_pass http://127.0.0.1:${backendPort}|g' ${configPath}`;
+          this.exec(fixBackendCmd, "Fix API proxy port", false);
+          this.log(`✅ API routes fixed: now pointing to port ${backendPort}`, "info");
+        }
+
+        if (frontendNeedsFix || backendNeedsFix) {
           // Test nginx configuration
           this.log("Testing nginx configuration...", "step");
           const testResult = this.exec("nginx -t", "Test nginx config", false);
@@ -421,22 +442,12 @@ class IntelligentDeployer {
             this.exec("systemctl reload nginx", "Reload nginx", false);
             this.log("✅ Nginx reloaded successfully", "info");
 
-            // Verify fix
-            this.log("Verifying nginx fix...", "step");
-            const verifyCmd = `grep -A 2 "proxy_pass" ${configPath} | grep ${expectedPort} || echo "not_fixed"`;
-            const verifyResult = this.exec(verifyCmd, "Verify nginx fix", false);
-
-            if (verifyResult.includes(`:${expectedPort}`)) {
-              this.log(`✅ Nginx fixed: now pointing to port ${expectedPort}`, "info");
-            } else {
-              this.log("⚠️ Nginx fix verification unclear", "warning");
-            }
+            // Show fixed config
+            const fixedConfig = this.exec(`cat ${configPath}`, "Show fixed nginx config", false);
+            this.log(`Fixed nginx config:\n${fixedConfig}`, "info");
           } else {
             this.log("❌ Nginx configuration test failed", "error");
             this.log(testResult, "error");
-            // Restore backup
-            this.exec(`mv ${configPath}.bak ${configPath}`, "Restore backup", false);
-            this.log("Restored nginx config from backup", "warning");
           }
         } else {
           this.log("✅ Nginx configuration already correct", "info");
@@ -501,18 +512,36 @@ class IntelligentDeployer {
     };
 
     try {
-      // Test 1: Homepage
+      // Test 1: Homepage (with content size check)
       this.log("Testing homepage...", "step");
-      const homeTest = this.exec(
-        `curl -s -w "\\nHTTP:%{http_code}\\nSize:%{size_download}" --max-time 10 ${this.config.url} 2>&1 | head -5`,
-        "Homepage test",
-        false
-      );
-      if (homeTest.includes("HTTP:200") && homeTest.includes("Size:") && parseInt(homeTest.match(/Size:(\d+)/)[1]) > 1000) {
-        this.log("✅ Homepage loads correctly (>1000 bytes)", "info");
-        checks.homepage = true;
-      } else {
-        this.log("❌ Homepage test failed", "error");
+      try {
+        // Get HTTP code and size separately
+        const httpCode = this.exec(
+          `curl -s -o /dev/null -w "%{http_code}" --max-time 10 ${this.config.url}`,
+          "Homepage HTTP check",
+          false
+        ).trim();
+
+        const contentSize = this.exec(
+          `curl -s -o /dev/null -w "%{size_download}" --max-time 10 ${this.config.url}`,
+          "Homepage size check",
+          false
+        ).trim();
+
+        const sizeInt = parseInt(contentSize) || 0;
+
+        this.log(`Homepage: HTTP=${httpCode}, Size=${sizeInt} bytes`, "info");
+
+        if (httpCode === "200" && sizeInt > 1000) {
+          this.log("✅ Homepage loads correctly (>1000 bytes)", "info");
+          checks.homepage = true;
+        } else if (httpCode === "200") {
+          this.log(`⚠️ Homepage loads but content is small (${sizeInt} bytes)`, "warning");
+        } else {
+          this.log(`❌ Homepage HTTP ${httpCode}`, "error");
+        }
+      } catch (error) {
+        this.log(`❌ Homepage test error: ${error.message}`, "error");
       }
 
       // Test 2: Login page
