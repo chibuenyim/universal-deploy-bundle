@@ -292,17 +292,19 @@ class UniversalIntelligentDeployer {
       return;
     }
 
-    this.log("Building frontend...", "step");
+    this.log("Building frontend with complete cache clear...", "step");
     try {
-      this.sshExec(`cd ${this.config.remotePath}/frontend && rm -rf .next node_modules/.cache`);
+      // Complete cache clearing for fresh build
+      this.sshExec(`cd ${this.config.remotePath}/frontend && rm -rf .next node_modules/.cache`, "Clean all frontend caches");
       this.sshExec(`cd ${this.config.remotePath}/frontend && npm ci --legacy-peer-deps 2>/dev/null || npm install`);
       this.sshExec(`cd ${this.config.remotePath}/frontend && npm run build`);
-      this.log("✓ Frontend built successfully", "info");
+      this.log("✓ Frontend built successfully with fresh cache", "info");
     } catch (error) {
-      this.log("Frontend build failed, attempting recovery...", "warning");
-      this.sshExec(`cd ${this.config.remotePath}/frontend && rm -rf .next node_modules && npm ci --legacy-peer-deps || npm install`);
+      this.log("Frontend build failed, attempting complete recovery...", "warning");
+      this.sshExec(`cd ${this.config.remotePath}/frontend && rm -rf .next node_modules`);
+      this.sshExec(`cd ${this.config.remotePath}/frontend && npm ci --legacy-peer-deps || npm install`);
       this.sshExec(`cd ${this.config.remotePath}/frontend && npm run build`);
-      this.log("✓ Frontend recovered and built", "info");
+      this.log("✓ Frontend recovered and built with clean slate", "info");
     }
   }
 
@@ -323,16 +325,19 @@ class UniversalIntelligentDeployer {
     }
 
     if (this.config.hasFrontend) {
-      this.log("Restarting frontend...", "step");
+      this.log("Restarting frontend with fresh process...", "step");
       const appName = `${env}-frontend`;
       try {
-        this.sshExec(`PM2_HOME=/etc/.pm2 pm2 restart ${appName} 2>/dev/null || PM2_HOME=/etc/.pm2 PORT=${this.config.frontendPort} pm2 start ${this.config.remotePath}/frontend/npm --name ${appName} -- start`);
+        // Delete and recreate for truly fresh start
+        this.sshExec(`PM2_HOME=/etc/.pm2 pm2 delete ${appName} -f 2>/dev/null || true`);
+        this.sshExec(`fuser -k ${this.config.frontendPort}/tcp 2>/dev/null || true`);
+        this.sshExec(`cd ${this.config.remotePath}/frontend && PORT=${this.config.frontendPort} PM2_HOME=/etc/.pm2 pm2 start npm --name ${appName} -- start`);
       } catch (error) {
-        // Kill port and restart
+        this.log("Fresh start failed, attempting recovery...", "warning");
         this.sshExec(`fuser -k ${this.config.frontendPort}/tcp 2>/dev/null || true`);
         this.sshExec(`cd ${this.config.remotePath}/frontend && PORT=${this.config.frontendPort} PM2_HOME=/etc/.pm2 pm2 start npm --name ${appName} -- start`);
       }
-      this.log("✓ Frontend restarted", "info");
+      this.log("✓ Frontend restarted with fresh process", "info");
     }
 
     this.sshExec(`PM2_HOME=/etc/.pm2 pm2 save`);
