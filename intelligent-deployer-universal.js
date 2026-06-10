@@ -128,27 +128,83 @@ class UniversalIntelligentDeployer {
     return info;
   }
 
-  sshExec(command) {
-    try {
-      this.log(`SSH executing...`, "step");
-      const sshCommand = this.options.localMode
-        ? command
-        : `ssh -q ${this.options.sshHost} "${command}"`;
-      const output = execSync(sshCommand, { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] });
+  sshExec(command, description = null, timeoutMs = 300000, retries = 3) {
+    const maxRetries = retries;
+    let lastError = null;
 
-      // Remove SSH banner/motd if present
-      const lines = output.split('\n');
-      const startIdx = lines.findIndex(line => line.match(/^[a-zA-Z0-9_\-\/]+$/) || !line.includes('Welcome'));
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        if (description && attempt === 1) {
+          this.log(`SSH: ${description}...`, "step");
+        } else if (description && attempt > 1) {
+          this.log(`SSH: Retry ${attempt}/${maxRetries} for ${description}...`, "warning");
+        }
 
-      if (startIdx >= 0) {
-        return lines.slice(startIdx).join('\n').trim();
+        const sshCommand = this.options.localMode
+          ? command
+          : `ssh -o ConnectTimeout=30 -o ServerAliveInterval=60 -o ServerAliveCountMax=3 ${this.options.sshHost} "${command}"`;
+
+        // Add timeout to prevent hanging
+        const output = execSync(sshCommand, {
+          encoding: "utf-8",
+          stdio: ["ignore", "pipe", "pipe"],
+          timeout: timeoutMs
+        });
+
+        const trimmed = output.trim();
+
+        // Remove SSH banner/motd if present
+        const lines = trimmed.split('\n');
+        const startIdx = lines.findIndex(line =>
+          !line.includes('Welcome') &&
+          !line.includes('Last login') &&
+          !line.includes('root@') &&
+          line.trim().length > 0
+        );
+
+        const result = startIdx >= 0 ? lines.slice(startIdx).join('\n').trim() : trimmed;
+
+        if (description && attempt > 1) {
+          this.log(`✓ SSH retry ${attempt} successful: ${description}`, "info");
+        }
+
+        return result;
+      } catch (error) {
+        lastError = error;
+        const errorMsg = error.message || "Unknown error";
+
+        // Log retryable errors
+        if (attempt < maxRetries) {
+          if (errorMsg.includes("timed out") || errorMsg.includes("ETIMEDOUT")) {
+            this.log(`SSH timeout, retrying (${attempt}/${maxRetries})...`, "warning");
+            continue;
+          }
+          if (errorMsg.includes("Connection reset") || errorMsg.includes("ECONNRESET")) {
+            this.log(`SSH connection reset, retrying (${attempt}/${maxRetries})...`, "warning");
+            continue;
+          }
+          if (errorMsg.includes("Connection refused") || errorMsg.includes("ECONNREFUSED")) {
+            this.log(`SSH connection refused, retrying (${attempt}/${maxRetries})...`, "warning");
+            // Wait before retry
+            execSync("sleep 3");
+            continue;
+          }
+        }
+
+        // Non-retryable error or max retries reached
+        if (errorMsg.includes("timed out")) {
+          throw new Error(`SSH timeout after ${timeoutMs}ms: ${description || command}`);
+        }
+        if (errorMsg.includes("Connection reset")) {
+          throw new Error(`SSH connection reset: ${description || command}`);
+        }
+
+        this.errors.push(`${description || "SSH command"}: ${errorMsg}`);
+        throw new Error(`SSH failed: ${errorMsg}`);
       }
-
-      return output.trim();
-    } catch (error) {
-      this.errors.push(`SSH command failed: ${error.message}`);
-      throw error;
     }
+
+    throw lastError || new Error(`SSH failed after ${maxRetries} retries: ${description || command}`);
   }
 
   remoteDiscoverProject() {
@@ -346,7 +402,7 @@ class UniversalIntelligentDeployer {
 
         // Verify the new process is serving
         this.sshExec(`sleep 20`, "Wait for frontend to start");
-        const serving = this.sshExec(`curl -s -o /dev/null -w "%{http_code}" ${this.config.url}`).trim();
+        const serving = this.sshExec(`curl -s -o /dev/null -w '%{http_code}' ${this.config.url} | tr -d '\n\r'`).trim();
         if (serving !== "200") {
           throw new Error(`Frontend not serving correctly after restart: HTTP ${serving}`);
         }
@@ -355,7 +411,7 @@ class UniversalIntelligentDeployer {
         this.sshExec(`fuser -k ${this.config.frontendPort}/tcp 2>/dev/null || true`);
         this.sshExec(`cd ${this.config.remotePath}/frontend && PORT=${this.config.frontendPort} PM2_HOME=/etc/.pm2 pm2 start npm --name ${appName} -- start`);
         this.sshExec(`sleep 20`, "Wait for frontend to start");
-        const retryServing = this.sshExec(`curl -s -o /dev/null -w "%{http_code}" ${this.config.url}`).trim();
+        const retryServing = this.sshExec(`curl -s -o /dev/null -w '%{http_code}' ${this.config.url} | tr -d '\n\r'`).trim();
         if (retryServing !== "200") {
           throw new Error(`Frontend still not serving: HTTP ${retryServing}`);
         }
