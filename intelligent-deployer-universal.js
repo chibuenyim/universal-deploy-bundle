@@ -294,6 +294,17 @@ class UniversalIntelligentDeployer {
 
     this.log("Building frontend with complete cache clear...", "step");
     try {
+      // Check if rebuild is needed by comparing timestamps
+      const sourceTimestamp = this.sshExec(`cd ${this.config.remotePath}/frontend/src/components && stat -c %Y UserNavigation.tsx 2>/dev/null || echo 0`).trim();
+      const buildTimestamp = this.sshExec(`cd ${this.config.remotePath}/frontend && stat -c %Y .next/BUILD_ID 2>/dev/null || echo 0`).trim();
+
+      if (buildTimestamp > sourceTimestamp) {
+        this.log("Build is newer than source - skipping rebuild", "info");
+        return;
+      }
+
+      this.log("Source code is newer - forcing complete rebuild...", "info");
+
       // Complete cache clearing for fresh build
       this.sshExec(`cd ${this.config.remotePath}/frontend && rm -rf .next node_modules/.cache`, "Clean all frontend caches");
       this.sshExec(`cd ${this.config.remotePath}/frontend && npm ci --legacy-peer-deps 2>/dev/null || npm install`);
@@ -332,12 +343,24 @@ class UniversalIntelligentDeployer {
         this.sshExec(`PM2_HOME=/etc/.pm2 pm2 delete ${appName} -f 2>/dev/null || true`);
         this.sshExec(`fuser -k ${this.config.frontendPort}/tcp 2>/dev/null || true`);
         this.sshExec(`cd ${this.config.remotePath}/frontend && PORT=${this.config.frontendPort} PM2_HOME=/etc/.pm2 pm2 start npm --name ${appName} -- start`);
+
+        // Verify the new process is serving
+        this.sshExec(`sleep 20`, "Wait for frontend to start");
+        const serving = this.sshExec(`curl -s -o /dev/null -w "%{http_code}" ${this.config.url}`).trim();
+        if (serving !== "200") {
+          throw new Error(`Frontend not serving correctly after restart: HTTP ${serving}`);
+        }
       } catch (error) {
         this.log("Fresh start failed, attempting recovery...", "warning");
         this.sshExec(`fuser -k ${this.config.frontendPort}/tcp 2>/dev/null || true`);
         this.sshExec(`cd ${this.config.remotePath}/frontend && PORT=${this.config.frontendPort} PM2_HOME=/etc/.pm2 pm2 start npm --name ${appName} -- start`);
+        this.sshExec(`sleep 20`, "Wait for frontend to start");
+        const retryServing = this.sshExec(`curl -s -o /dev/null -w "%{http_code}" ${this.config.url}`).trim();
+        if (retryServing !== "200") {
+          throw new Error(`Frontend still not serving: HTTP ${retryServing}`);
+        }
       }
-      this.log("✓ Frontend restarted with fresh process", "info");
+      this.log("✓ Frontend restarted with fresh process and verified", "info");
     }
 
     this.sshExec(`PM2_HOME=/etc/.pm2 pm2 save`);
