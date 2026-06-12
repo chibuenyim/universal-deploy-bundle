@@ -1,0 +1,34 @@
+{
+  "name": "universal-deploy-bundle",
+  "version": "2.0.0",
+  "description": "Universal deployment bundle with AI automation interface - Works for ANY Next.js/Node.js project",
+  "main": "core/universal-deployer.js",
+  "bin": {
+    "universal-deploy": "./bin/deploy.js"
+  },
+  "scripts": {
+    "setup": "node scripts/interactive-setup.js",
+    "deploy": "node bin/deploy.js",
+    "deploy:production": "node bin/deploy.js production",
+    "deploy:staging": "node bin/deploy.js staging",
+    "deploy:local": "node bin/deploy.js development --local",
+    "deploy:verify": "node bin/deploy.js production --verify"
+  },
+  "keywords": [
+    "deployment",
+    "automation",
+    "ai",
+    "universal",
+    "ssh",
+    "next.js"
+  ],
+  "author": "Chibuenyim",
+  "license": "MIT WITH COMMERCIAL RESTRICTIONS - See LICENSE file",
+  "dependencies": {
+    "chalk": "^4.1.2",
+    "commander": "^11.1.0",
+    "dotenv": "^16.3.1",
+    "inquirer": "^8.2.5",
+    "node-ssh": "^13.2.0"
+  }
+}
