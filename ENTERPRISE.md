@@ -48,6 +48,10 @@ The **Universal Deploy Bundle** is free and open source, but some teams need mor
 **Includes everything in Starter, plus:**
 - ✅ Configuration for 3 environments (dev, staging, production)
 - ✅ Multi-project setup (up to 3 projects)
+- ✅ **Security scanning suite** (automated vulnerability fixing)
+- ✅ **OWASP compliance checks**
+- ✅ **Risk scoring and reporting**
+- ✅ **Pre/post-deployment security verification**
 - ✅ Custom workflow development
 - ✅ CI/CD pipeline integration
 - ✅ Team training (1 day workshop)
@@ -75,8 +79,15 @@ The **Universal Deploy Bundle** is free and open source, but some teams need mor
 - ✅ Unlimited projects
 - ✅ On-premise deployment
 - ✅ Custom feature development
+- ✅ **Advanced security suite:**
+  - ✅ Automated vulnerability fixing with rollback
+  - ✅ Snyk/Dependabot integration
+  - ✅ Security trend analysis and dashboard
+  - ✅ Real-time security alerts
+  - ✅ Custom security policies
+  - ✅ Incident response automation
 - ✅ Security audit and hardening
-- ✅ Compliance assistance (SOC2, HIPAA, etc.)
+- ✅ Compliance assistance (SOC2, HIPAA, PCI-DSS)
 - ✅ 24/7 support SLA
 - ✅ Dedicated account manager
 - ✅ Quarterly strategy reviews

@@ -14,6 +14,8 @@
 - 🔄 **Auto-Recovery** - Self-healing deployments with retry logic
 - 🔐 **Secure Credential Storage** - One-time setup, secure reuse
 - 🌐 **SSH Orchestration** - Remote deployment with node-ssh
+- 🛡️ **Security Scanning** - Built-in vulnerability scanner (FREE)
+- 🔒 **Enterprise Security** - OWASP compliance, automated fixing (PAID)
 
 ## 🚀 Quick Start (3 Steps)
 
@@ -70,6 +72,128 @@ You ONLY provide:
 - 🔒 Credentials never committed to git
 - 🔒 node-ssh for secure connections
 - 🔒 SSH key support
+
+## 🛡️ Security Scanning (FREE)
+
+Built-in security vulnerability scanner for ALL users:
+
+### Basic Security Scan (FREE)
+
+```bash
+npm run security
+```
+
+**What it checks:**
+- ✅ npm audit vulnerabilities
+- ✅ Outdated packages
+- ✅ .env file exposure
+- ✅ .gitignore configuration
+- ✅ Hardcoded credentials detection
+
+### Output Example:
+
+```
+🛡️  Universal Security Scanner
+==================================================
+🔍 Scanning for vulnerabilities...
+
+⚠️  Found 5 vulnerabilities:
+   🔴 Critical: 1
+   🟠 High: 2
+   🟡 Moderate: 1
+   🟢 Low: 1
+
+📦 Checking for outdated packages...
+⚠️  Found 3 outdated packages
+
+🔒 Performing basic security checks...
+⚠️  Found 2 security issues:
+   🔴 .env exists but is not in .gitignore
+   🟡 .env.local exists but is not in .gitignore
+
+📊 SECURITY SCAN RESULTS
+==================================================
+🎯 Summary:
+   Vulnerabilities: 5
+   Outdated Packages: 3
+   Security Issues: 2
+
+💡 Recommendations:
+   → Run: npm audit fix
+   → Run: npm update
+   → Review and update .gitignore
+```
+
+## 🔒 Enterprise Security (PAID)
+
+Upgrade to enterprise for advanced security features:
+
+### Automated Vulnerability Fixing
+
+```bash
+npm run security:fix
+```
+
+**Enterprise features:**
+- ✅ Automatic vulnerability fixing
+- ✅ Safe dependency updates
+- ✅ Breaking change warnings
+- ✅ Rollback protection
+
+### Full Compliance Scanning
+
+```bash
+npm run security:compliance
+```
+
+**OWASP Compliance checks:**
+- ✅ Security headers verification
+- ✅ Dependency validation
+- ✅ Credential protection checks
+- ✅ Encryption standards verification
+- ✅ Detailed security reports (JSON)
+
+### Enterprise Features
+
+```bash
+npm run security:enterprise
+```
+
+**Complete enterprise security suite:**
+- ✅ All security scans
+- ✅ Automated fixing with compliance
+- ✅ Risk score calculation (0-100)
+- ✅ Security trend analysis
+- ✅ Pre/post-deployment verification
+- ✅ Integration with Snyk, Dependabot (coming soon)
+
+### Security Reports
+
+Enterprise users get detailed security reports:
+
+```json
+{
+  "summary": {
+    "totalVulnerabilities": 5,
+    "totalOutdated": 3,
+    "totalIssues": 2,
+    "riskScore": 35
+  },
+  "details": {
+    "vulnerabilities": [...],
+    "outdatedPackages": [...],
+    "securityIssues": [...]
+  },
+  "recommendations": [
+    {
+      "priority": "urgent",
+      "action": "Fix critical vulnerabilities immediately",
+      "command": "npm audit fix"
+    }
+  ],
+  "timestamp": "2026-06-13T10:30:00.000Z"
+}
+```
 
 ## 📖 Usage
 
@@ -149,6 +273,7 @@ console.log(result);
 ## 📚 Documentation
 
 - [User Guide](USER-GUIDE.md) - Detailed setup guide
+- [Security Features](SECURITY-FEATURES.md) - Complete security documentation
 - [Security Notice](SECURITY-NOTICE.md) - Security best practices
 - [Quick Start](QUICK-START.md) - 3-step quick start
 

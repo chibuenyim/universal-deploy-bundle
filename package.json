@@ -12,7 +12,11 @@
     "deploy:production": "node bin/deploy.js production",
     "deploy:staging": "node bin/deploy.js staging",
     "deploy:local": "node bin/deploy.js development --local",
-    "deploy:verify": "node bin/deploy.js production --verify"
+    "deploy:verify": "node bin/deploy.js production --verify",
+    "security": "node core/security-scanner.js",
+    "security:fix": "node core/security-scanner.js --fix",
+    "security:enterprise": "node core/security-scanner.js --enterprise --fix",
+    "security:compliance": "node core/security-scanner.js --enterprise --compliance"
   },
   "keywords": [
     "deployment",
@@ -20,7 +24,12 @@
     "ai",
     "universal",
     "ssh",
-    "next.js"
+    "next.js",
+    "security",
+    "vulnerability-scanner",
+    "npm-audit",
+    "owasp",
+    "security-compliance"
   ],
   "author": "Chibuenyim",
   "license": "MIT WITH COMMERCIAL RESTRICTIONS - See LICENSE file",
