@@ -1,26 +1,56 @@
 {
-  "name": "universal-deploy-zero-error-verification",
-  "version": "1.0.0",
-  "description": "Universal Deploy + Zero-Error Verification Bundle - Production-ready deployment and verification system",
-  "main": "index.js",
+  "name": "universal-deploy-bundle",
+  "version": "2.0.0",
+  "description": "Universal deployment bundle with AI automation interface, verification system, and security scanning - Works for ANY Next.js/Node.js project",
+  "main": "core/universal-deployer.js",
+  "bin": {
+    "universal-deploy": "./bin/deploy.js"
+  },
   "scripts": {
-    "install": "node install.js"
+    "setup": "node scripts/interactive-setup.js",
+    "deploy": "node bin/deploy.js",
+    "deploy:production": "node bin/deploy.js production",
+    "deploy:staging": "node bin/deploy.js staging",
+    "deploy:local": "node bin/deploy.js development --local",
+    "deploy:verify": "node bin/deploy.js production --verify",
+    "verify-zero-errors": "node scripts/verify-zero-errors.js",
+    "verify-runtime": "node scripts/verify-runtime-errors.js",
+    "test:e2e:runtime": "playwright test e2e/runtime-errors.spec.ts",
+    "verify-all": "npm run verify-zero-errors && npm run build && npm run verify-runtime && npm run test:e2e:runtime",
+    "security": "node core/security-scanner.js",
+    "security:scan": "node core/security-scanner.js",
+    "security:fix": "node core/security-scanner.js --fix",
+    "security:enterprise": "node core/security-scanner.js --enterprise --fix",
+    "security:compliance": "node core/security-scanner.js --enterprise --compliance",
+    "train:claude": "node claude-code-programmer.js --all"
   },
   "keywords": [
     "deployment",
+    "automation",
+    "ai",
+    "claude-code",
+    "universal",
+    "ssh",
+    "next.js",
     "verification",
     "zero-error",
+    "security",
+    "vulnerability-scanner",
+    "npm-audit",
+    "owasp",
+    "security-compliance",
     "ci-cd",
     "testing",
     "runtime-errors",
     "playwright",
-    "github-actions"
+    "github-actions",
+    "training-system"
   ],
   "author": "",
-  "license": "MIT",
+  "license": "MIT WITH RESTRICTIONS - See LICENSE file",
   "repository": {
     "type": "git",
-    "url": "https://github.com/your-org/universal-deploy-bundle"
+    "url": "https://github.com/chibuenyim/universal-deploy-bundle"
   },
   "files": [
     "scripts",
@@ -28,11 +58,20 @@
     ".github/workflows",
     "lib",
     "docs",
+    "core",
+    "bin",
+    "tools",
     "README.md",
+    "CLAUDE-CODE-TRAINING.md",
     "install.sh"
   ],
   "dependencies": {
-    "@playwright/test": "^1.40.0"
+    "@playwright/test": "^1.40.0",
+    "chalk": "^4.1.2",
+    "commander": "^11.1.0",
+    "dotenv": "^16.3.1",
+    "inquirer": "^8.2.5",
+    "node-ssh": "^13.2.0"
   },
   "devDependencies": {
     "playwright": "^1.40.0"
