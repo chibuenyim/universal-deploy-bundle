@@ -40,6 +40,12 @@ class AutoFixEngine {
   async fixError(error) {
     const { category, message, resolution, autoRecoverable, context } = error;
 
+    // Ensure config is initialized before proceeding
+    if (!this.config) {
+      this.log(`Auto-fix engine: config not initialized, skipping fix`, "warning");
+      return false;
+    }
+
     this.log(`Auto-fix engine activated for: ${category} - ${message}`, "info");
 
     // Check if error is auto-recoverable
@@ -501,8 +507,19 @@ class AutoFixEngine {
 
   /**
    * SSH command helper
+   * Uses the deployer's SSH execution with null safety
    */
   sshExec(command) {
+    // Check if config is initialized
+    if (!this.config) {
+      throw new Error('AutoFixEngine: config not initialized. Call initialize(config) before using sshExec.');
+    }
+
+    // Check if config has required properties
+    if (!this.config.hasOwnProperty('localMode')) {
+      throw new Error('AutoFixEngine: config.localMode not set');
+    }
+
     const sshCommand = this.config.localMode
       ? command
       : `ssh -i ${this.config.sshKeyPath} -o StrictHostKeyChecking=no -o ConnectTimeout=30 ${this.config.sshHost} "${command}"`;

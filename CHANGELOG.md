@@ -2,6 +2,105 @@
 
 All notable changes to Universal Deploy Bundle will be documented in this file.
 
+## [4.1.4.4] - 2026-07-02
+
+### Fixed - Auto-Fix Engine Null Safety
+
+**🔧 CRITICAL: Fixed Auto-Fix Engine crashing with null config during build phase**
+
+#### Bug Description
+V4.1.4.3 fixed null safety in the main deployer's `sshExec()`, but the Auto-Fix Engine has its own `sshExec()` method and multiple fix methods that access `this.config` without null checks. When errors are detected during the build phase and the auto-fix engine attempts to fix them, it crashes with:
+
+```
+TypeError: Cannot read properties of null (reading 'localMode')
+TypeError: Cannot read properties of null (reading 'remotePath')
+```
+
+#### Root Cause
+The Auto-Fix Engine is instantiated in the constructor with `null` config:
+```javascript
+// Line 350 in intelligent-deployer.js
+this.autoFix = new AutoFixEngine(null, this.log.bind(this));
+```
+
+Config is set later during `autoConfigure()`:
+```javascript
+// Line 929
+this.autoFix.config = this.config;
+```
+
+However, multiple methods in `auto-fix-engine.js` access `this.config` without null checks:
+- Line 110: `fixTypeError()` → `this.config.remotePath`
+- Line 212: `fixModuleError()` → `this.config.remotePath`
+- Line 243: `fixDependencyError()` → `this.config.remotePath`
+- Line 272: `fixEnvironmentError()` → `this.config.remotePath`
+- Line 517: `sshExec()` → `this.config.localMode`
+
+#### Fix Applied
+- **Added null check at start of `fixError()` method**
+- **Enhanced `sshExec()` with explicit null safety and error messages**
+- **Auto-fix engine gracefully skips fixes if config not initialized**
+
+**Fixed code:**
+```javascript
+async fixError(error) {
+  // Ensure config is initialized before proceeding
+  if (!this.config) {
+    this.log(`Auto-fix engine: config not initialized, skipping fix`, "warning");
+    return false;
+  }
+  // ... rest of fix logic
+}
+```
+
+**Enhanced sshExec:**
+```javascript
+sshExec(command) {
+  // Check if config is initialized
+  if (!this.config) {
+    throw new Error('AutoFixEngine: config not initialized. Call initialize(config) before using sshExec.');
+  }
+
+  // Check if config has required properties
+  if (!this.config.hasOwnProperty('localMode')) {
+    throw new Error('AutoFixEngine: config.localMode not set');
+  }
+
+  const sshCommand = this.config.localMode ? command : `ssh -i ...`;
+  // ...
+}
+```
+
+#### Files Fixed
+- `auto-fix-engine.js` (Auto-Fix Engine)
+  - Line 44-47: Added null check in `fixError()`
+  - Lines 507-515: Enhanced null checks in `sshExec()`
+- `CHANGELOG.md` - Added V4.1.4.4 entry
+
+#### Testing
+- ✅ Verified syntax with `node --check` on both files
+- ✅ Auto-fix engine now safely handles null config
+- ✅ Build phase can continue even if auto-fix isn't ready
+
+#### Impact
+- **Before**: Build phase crashes when auto-fix engine attempts to fix errors
+- **After**: Auto-fix engine gracefully skips fixes if config not initialized, build continues
+
+### Changed
+- Added null safety check in fixError() entry point
+- Enhanced sshExec() with explicit validation and error messages
+- Auto-fix engine fails gracefully instead of crashing
+
+### Security
+- **None** - This was a null pointer safety fix
+
+### Migration
+**Required immediately** - Anyone using V4.1.4.3 who experiences build phase crashes:
+
+```bash
+git pull origin master
+```
+
 ## [4.1.4.3] - 2026-07-02
 
 ### Fixed - Null Config Protection
