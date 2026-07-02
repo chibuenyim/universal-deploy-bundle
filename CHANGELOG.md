@@ -2,6 +2,77 @@
 
 All notable changes to Universal Deploy Bundle will be documented in this file.
 
+## [4.1.4.2] - 2026-07-02
+
+### Fixed - Local Mode Detection
+
+**🔧 CRITICAL: Fixed localMode not being respected in sshExec()**
+
+#### Bug Description
+The `sshExec()` method was checking `this.options.localMode` instead of `this.config.localMode`, causing local mode detection to fail. The detection logic in `detectLocalVsRemote()` sets `this.config.localMode`, but `sshExec()` was reading from the original options.
+
+**Symptoms:**
+- `--local` flag was ignored
+- Deployer tried to use SSH even when running on the target server
+- Commands failed with SSH errors when they should have executed locally
+
+#### Root Cause
+```javascript
+// WRONG (line 632) - was checking this.options.localMode
+const sshCommand = this.options.localMode
+  ? command
+  : `ssh -i ... ${this.options.sshHost} "${command}"`;
+```
+
+The issue:
+1. `this.options` = initial CLI args (immutable)
+2. `this.config` = merged configuration (updated by `detectLocalVsRemote()`)
+3. `detectLocalVsRemote()` updates `this.config.localMode`
+4. But `sshExec()` was reading from `this.options.localMode` (stale value)
+
+#### Fix Applied
+- **Updated `sshExec()` to check `this.config.localMode`**
+- **Added fallback check for `this.config.isLocal`**
+- **Improved comments in `detectLocalVsRemote()`**
+
+**Fixed code:**
+```javascript
+// CORRECT - now checks this.config.localMode || this.config.isLocal
+const sshCommand = this.config.localMode || this.config.isLocal
+  ? command
+  : `ssh -i ... ${this.options.sshHost} "${command}"`;
+```
+
+#### Files Fixed
+- `intelligent-deployer.js` (main V4 deployer)
+  - Line 632: Changed `this.options.localMode` to `this.config.localMode || this.config.isLocal`
+  - Lines 821-875: Improved comments and structure in `detectLocalVsRemote()`
+
+#### Testing
+- ✅ Verified syntax with `node --check`
+- ✅ Local mode now respects all three detection paths:
+  1. `--local` flag
+  2. `DEPLOY_LOCAL=true` environment variable
+  3. Auto-detection when hostname matches SSH target
+
+#### Impact
+- **Before**: Local mode ignored, SSH attempted even on target server
+- **After**: Local mode properly detected and respected
+
+### Changed
+- Modified sshExec() local mode check
+- Improved detectLocalVsRemote() comments and clarity
+
+### Security
+- **None** - This was a logic fix, not a security issue
+
+### Migration
+**Recommended** - Pull this fix if you use local mode or run deployer on target server:
+
+```bash
+git pull origin master
+```
+
 ## [4.1.4.1] - 2026-07-02
 
 ### Fixed - Hotfix

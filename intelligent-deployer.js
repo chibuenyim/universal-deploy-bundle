@@ -629,7 +629,7 @@ class UniversalIntelligentDeployerV4 {
           this.log(`SSH: Retry ${attempt}/${maxRetries} for ${description}...`, "warning");
         }
 
-        const sshCommand = this.options.localMode
+        const sshCommand = this.config.localMode || this.config.isLocal
           ? command
           : `ssh -i ${this.options.sshKeyPath} -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=60 -o ServerAliveCountMax=3 ${this.options.sshHost} "${command}"`;
 
@@ -825,12 +825,14 @@ class UniversalIntelligentDeployerV4 {
   detectLocalVsRemote() {
     this.log("Detecting deployment environment...", "discover");
 
+    // Already set via --local flag or DEPLOY_LOCAL env
     if (this.config.localMode) {
       this.log("✓ Local mode explicitly set", "info");
       this.config.isLocal = true;
       return true;
     }
 
+    // No SSH host configured - must be local
     if (!this.config.sshHost) {
       this.log("✓ No SSH host configured - running locally", "info");
       this.config.isLocal = true;
@@ -838,7 +840,7 @@ class UniversalIntelligentDeployerV4 {
       return true;
     }
 
-    // Get current hostname
+    // Check if we're running on the target server
     try {
       const hostname = execSync('hostname').toString().trim();
       this.log(`Current hostname: ${hostname}`, "info");
