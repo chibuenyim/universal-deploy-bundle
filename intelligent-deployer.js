@@ -1,28 +1,49 @@
 #!/usr/bin/env node
 
 /**
- * INTELLIGENT UNIVERSAL DEPLOYER V4.1.4 - ZERO-ERROR, TWELVE-FACTOR COMPLIANT, AUTO-FIX
+ * INTELLIGENT UNIVERSAL DEPLOYER V5.0 - ZERO-TOLERANCE, PRODUCTION-READY
  *
- * V4 Enhancements:
- * 1. FORCED CONTINUATION ENGINE - Agent must continue to completion unless manually stopped
- * 2. ZERO-CONSOLE ERROR SYSTEM - Detects, categorizes, and resolves all deployment errors
- * 3. TWELVE-FACTOR COMPLIANCE - Validates and enforces 12-factor principles
- * 4. AUTO-FIX ENGINE (V4.1.4) - Automatically fixes code errors using specific resolution context
+ * ZERO-TOLERANCE POLICY: "External factors" are NOT acceptable excuses
  *
- * V4.1.4 Key Feature: Force Continue means AUTO-FIX then continue, NOT skip errors
+ * In production deployment, the following are NEVER acceptable:
+ * ❌ "SSH connection failed - external issue, continuing anyway"
+ * ❌ "Network timeout - external problem, will retry later"
+ * ❌ "Server not responding - infrastructure issue, not our problem"
+ *
+ * INSTEAD, V5.0 enforces:
+ * ✅ EXTERNAL FAILURES = DEPLOYMENT BLOCKERS
+ * ✅ MUST RESOLVE OR FAIL EXPLICITLY
+ * ✅ ZERO TOLERANCE FOR "EXTERNAL FACTOR" EXCUSES
+ *
+ * Every failure must either:
+ * 1. Be auto-fixed (if recoverable)
+ * 2. Have explicit resolution steps provided
+ * 3. Fail the deployment with clear blocker message
+ *
+ * V5.0 Enhancements:
+ * 1. ZERO-TOLERANCE FOR EXTERNAL FAILURES - SSH/network issues block deployment with explicit resolutions
+ * 2. FORCED CONTINUATION ENGINE - Continue to completion OR create milestone (never skip errors)
+ * 3. ZERO-CONSOLE ERROR SYSTEM - Detects, categorizes, and resolves all deployment errors
+ * 4. TWELVE-FACTOR COMPLIANCE - Validates and enforces 12-factor principles
+ * 5. AUTO-FIX ENGINE (V5.0) - Automatically fixes code errors using specific resolution context
+ * 6. MILESTONE SYSTEM (V5.0) - Creates checkpoints for manual fixes, enables partial deployment
+ *
+ * V5.0 Key Feature: "Force Continue" means FIX-THEN-CONTINUE, never SKIP-AND-CONTINUE
  * - Detect specific errors (TypeScript, dependencies, environment, etc.)
- * - Apply targeted fixes based on error detection context
+ * - Apply targeted fixes (auto-fix or manual milestone)
  * - Verify fixes were successful
  * - Continue to next deployment step
  *
  * Features:
  * - Persistent state tracking - can resume from any failure point
- * - Zero-error tolerance - every error must be resolved before deployment completes
+ * - Zero-error tolerance - every error must be resolved or deployment fails
  * - Context-aware error resolution - provides specific guidance for each error type
  * - Twelve-factor validation - ensures adherence to cloud-native best practices
  * - Automatic rollback on critical failures
  * - Complete error logging and audit trail
  * - Configurable SSH key path for public universal use
+ * - Local mode detection with fluid fallback
+ * - Null-safe execution across all code paths
  *
  * Usage:
  *   node deploy-v4.js [environment] [options]
@@ -702,21 +723,75 @@ class UniversalIntelligentDeployerV4 {
           }
         }
 
-        // Non-retryable error or max retries reached
+        // Non-retryable error or max retries reached - ZERO TOLERANCE FOR EXTERNAL FAILURES
         const errorEntry = this.state.addError(
           new Error(`SSH failed: ${errorMsg}`),
           ERROR_CATEGORIES.NETWORK,
-          { description, attempts: attempt }
+          { description, attempts: attempt, requiresResolution: true }
         );
 
-        this.log(`❌ SSH command failed: ${errorMsg}`, "error");
-        this.log(`Error context: ${ERROR_CATEGORIES.NETWORK.resolution}`, "info");
+        this.log(`❌ SSH command failed after ${attempt} attempts: ${errorMsg}`, "error");
+        this.log(``, "error");
+        this.log(`================================`, "error");
+        this.log(`❌ EXTERNAL FAILURE - DEPLOYMENT BLOCKED`, "error");
+        this.log(`================================`, "error");
+        this.log(``, "error");
+        this.log(`SSH Failure Details:`, "error");
+        this.log(`  Command: ${description || 'N/A'}`, "error");
+        this.log(`  Attempts: ${attempt}/${maxRetries}`, "error");
+        this.log(`  Error: ${errorMsg}`, "error");
+        this.log(``, "error");
+        this.log(`This is NOT an "external factor" - this is a DEPLOYMENT BLOCKER`, "error");
+        this.log(``, "error");
+        this.log(`Required Action - MUST RESOLVE BEFORE DEPLOYMENT CAN CONTINUE:`, "error");
 
-        throw new Error(`SSH failed after ${attempt} attempts: ${errorMsg}`);
+        // Provide specific resolution based on error type
+        if (errorMsg.includes("Connection refused") || errorMsg.includes("ECONNREFUSED")) {
+          this.log(`  → SSH connection refused - Server may be down or firewall blocking`, "error");
+          this.log(`  → Resolution:`, "error");
+          this.log(`      1. Verify server is running: ping ${this.config.sshHost}`, "error");
+          this.log(`      2. Check SSH port is open: nc -zv ${this.config.sshHost} 22`, "error");
+          this.log(`      3. Verify firewall allows SSH from this IP`, "error");
+          this.log(`      4. Check SSH service: systemctl status sshd (on server)`, "error");
+        } else if (errorMsg.includes("timed out") || errorMsg.includes("ETIMEDOUT")) {
+          this.log(`  → SSH connection timeout - Network or server issue`, "error");
+          this.log(`  → Resolution:`, "error");
+          this.log(`      1. Check network connectivity: traceroute ${this.config.sshHost}`, "error");
+          this.log(`      2. Verify server not overloaded: uptime (on server)`, "error");
+          this.log(`      3. Check for network congestion or packet loss`, "error");
+          this.log(`      4. Verify DNS resolution: nslookup ${this.config.sshHost}`, "error");
+        } else if (errorMsg.includes("Connection reset") || errorMsg.includes("ECONNRESET")) {
+          this.log(`  → SSH connection reset - Unstable connection`, "error");
+          this.log(`  → Resolution:`, "error");
+          this.log(`      1. Check network stability`, "error");
+          this.log(`      2. Verify SSH configuration: /etc/ssh/sshd_config`, "error");
+          this.log(`      3. Check for NAT/firewall timeout issues`, "error");
+          this.log(`      4. Verify server resources (memory/CPU not exhausted)`, "error");
+        } else if (errorMsg.includes("Permission denied") || errorMsg.includes("EACCES")) {
+          this.log(`  → SSH permission denied - Authentication issue`, "error");
+          this.log(`  → Resolution:`, "error");
+          this.log(`      1. Verify SSH key exists: ls -la ${this.options.sshKeyPath}`, "error");
+          this.log(`      2. Check key permissions: chmod 600 ${this.options.sshKeyPath}`, "error");
+          this.log(`      3. Verify key added to ssh-agent: ssh-add -l`, "error");
+          this.log(`      4. Test SSH manually: ssh -i ${this.options.sshKeyPath} ${this.config.sshHost}`, "error");
+        } else {
+          this.log(`  → Unknown SSH error - Manual investigation required`, "error");
+          this.log(`  → Resolution:`, "error");
+          this.log(`      1. Test SSH manually: ssh -i ${this.options.sshKeyPath} ${this.config.sshHost}`, "error");
+          this.log(`      2. Check SSH verbose output: ssh -v ${this.config.sshHost}`, "error");
+          this.log(`      3. Review server SSH logs: /var/log/auth.log or /var/log/secure`, "error");
+        }
+
+        this.log(``, "error");
+        this.log(`⚠️  DO NOT PROCEED WITHOUT RESOLVING THIS ISSUE`, "error");
+        this.log(`⚠️  Accepting external failures is NOT proper deployment practice`, "error");
+        this.log(`================================`, "error");
+
+        throw new Error(`SSH_DEPLOYMENT_BLOCKER: ${errorMsg} - Must resolve before deployment can continue`);
       }
     }
 
-    throw lastError || new Error(`SSH failed after ${maxRetries} retries: ${description || command}`);
+    throw lastError || new Error(`SSH_DEPLOYMENT_BLOCKER: Failed after ${maxRetries} retries - ${description || command}`);
   }
 
   remoteDiscoverProject() {

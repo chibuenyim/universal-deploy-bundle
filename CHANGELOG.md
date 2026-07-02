@@ -2,6 +2,174 @@
 
 All notable changes to Universal Deploy Bundle will be documented in this file.
 
+## [5.1.0] - 2026-07-02
+
+### ZERO-TOLERANCE POLICY - External Failures Are Deployment Blockers
+
+**🚫 ZERO-TOLERANCE: "External factors" are NOT acceptable excuses - they MUST be resolved or deployment FAILS**
+
+#### Philosophy Shift
+
+**Before V5.1.0 (WRONG):**
+```
+❌ SSH connection failed - external issue, will retry later
+❌ Network timeout - infrastructure problem, not our code
+❌ Server not responding - ISP issue, continuing anyway
+```
+
+**After V5.1.0 (CORRECT):**
+```
+✅ SSH connection failed - DEPLOYMENT BLOCKER, must resolve before continuing
+✅ Network timeout - DEPLOYMENT BLOCKER, requires resolution
+✅ Server not responding - DEPLOYMENT BLOCKER, infrastructure issue must be fixed
+```
+
+#### What Changed
+
+**SSH Failures Are Now Deployment Blockers:**
+
+When SSH fails after max retries, V5.1.0:
+1. Displays clear blocker message: "❌ EXTERNAL FAILURE - DEPLOYMENT BLOCKED"
+2. States explicitly: "This is NOT an 'external factor' - this is a DEPLOYMENT BLOCKER"
+3. Provides specific resolution steps based on error type
+4. Throws error: `SSH_DEPLOYMENT_BLOCKER` instead of generic error
+5. Deployment FAILS explicitly (does not continue)
+
+**Error Type Resolution Guides:**
+
+**1. Connection Refused (ECONNREFUSED)**
+```
+→ SSH connection refused - Server may be down or firewall blocking
+→ Resolution:
+    1. Verify server is running: ping <host>
+    2. Check SSH port is open: nc -zv <host> 22
+    3. Verify firewall allows SSH from this IP
+    4. Check SSH service: systemctl status sshd (on server)
+```
+
+**2. Connection Timeout (ETIMEDOUT)**
+```
+→ SSH connection timeout - Network or server issue
+→ Resolution:
+    1. Check network connectivity: traceroute <host>
+    2. Verify server not overloaded: uptime (on server)
+    3. Check for network congestion or packet loss
+    4. Verify DNS resolution: nslookup <host>
+```
+
+**3. Connection Reset (ECONNRESET)**
+```
+→ SSH connection reset - Unstable connection
+→ Resolution:
+    1. Check network stability
+    2. Verify SSH configuration: /etc/ssh/sshd_config
+    3. Check for NAT/firewall timeout issues
+    4. Verify server resources (memory/CPU not exhausted)
+```
+
+**4. Permission Denied (EACCES)**
+```
+→ SSH permission denied - Authentication issue
+→ Resolution:
+    1. Verify SSH key exists: ls -la <key_path>
+    2. Check key permissions: chmod 600 <key_path>
+    3. Verify key added to ssh-agent: ssh-add -l
+    4. Test SSH manually: ssh -i <key> <host>
+```
+
+**5. Unknown Errors**
+```
+→ Unknown SSH error - Manual investigation required
+→ Resolution:
+    1. Test SSH manually: ssh -i <key> <host>
+    2. Check SSH verbose output: ssh -v <host>
+    3. Review server SSH logs: /var/log/auth.log or /var/log/secure
+```
+
+#### Blocker Output Example
+
+```
+================================
+❌ EXTERNAL FAILURE - DEPLOYMENT BLOCKED
+================================
+
+SSH Failure Details:
+  Command: Pulling latest code...
+  Attempts: 3/3
+  Error: Connection refused
+
+This is NOT an "external factor" - this is a DEPLOYMENT BLOCKER
+
+Required Action - MUST RESOLVE BEFORE DEPLOYMENT CAN CONTINUE:
+  → SSH connection refused - Server may be down or firewall blocking
+  → Resolution:
+      1. Verify server is running: ping root@cheapestdata.com
+      2. Check SSH port is open: nc -zv root@cheapestdata.com 22
+      3. Verify firewall allows SSH from this IP
+      4. Check SSH service: systemctl status sshd (on server)
+
+⚠️  DO NOT PROCEED WITHOUT RESOLVING THIS ISSUE
+⚠️  Accepting external failures is NOT proper deployment practice
+================================
+
+Error: SSH_DEPLOYMENT_BLOCKER: Connection refused - Must resolve before deployment can continue
+```
+
+#### Files Modified
+- `intelligent-deployer.js`
+  - Lines 3-49: Updated header with ZERO-TOLERANCE policy
+  - Lines 705-773: Enhanced SSH failure handling with blocker messages and resolutions
+
+### Added
+- ZERO-TOLERANCE policy for external failures
+- Deployment blocker classification for SSH/network issues
+- Specific resolution steps for each error type
+- Clear "DEPLOYMENT_BLOCKER" error messages
+- Explicit warnings against accepting "external factors"
+
+### Changed
+- SSH failures now throw `SSH_DEPLOYMENT_BLOCKER` errors
+- Enhanced error messages with resolution guides
+- Updated header to reflect ZERO-TOLERANCE philosophy
+- Marked errors with `requiresResolution: true` in context
+
+### Security
+
+**Critical - This is a deployment security enhancement:**
+- Prevents deployments with unresolved infrastructure issues
+- Forces proper infrastructure setup before allowing deployments
+- Eliminates "blame external factors" anti-pattern
+- Ensures deployment issues are either fixed or explicitly failed
+
+### Migration
+
+**HIGHLY RECOMMENDED** - Pull this to enforce proper deployment practices:
+
+```bash
+git pull origin master
+```
+
+This prevents the "accept external failures" anti-pattern and enforces proper deployment discipline.
+
+### Best Practices
+
+**PROPER DEPLOYMENT WORKFLOW:**
+```
+1. Deployment encounters SSH failure
+2. Deployer provides specific resolution steps
+3. Engineer resolves the infrastructure issue
+4. SSH connection succeeds
+5. Deployment continues
+```
+
+**WRONG (now blocked):**
+```
+1. Deployment encounters SSH failure
+2. Engineer accepts as "external factor"
+3. Deployment continues despite failure
+4. Production ends up broken
+```
+
 ## [5.0.0] - 2026-07-02
 
 ### STABLE RELEASE - Complete Feature Integration
