@@ -629,7 +629,12 @@ class UniversalIntelligentDeployerV4 {
           this.log(`SSH: Retry ${attempt}/${maxRetries} for ${description}...`, "warning");
         }
 
-        const sshCommand = this.config.localMode || this.config.isLocal
+        // Check if config is initialized (called during autoConfigure phase)
+        // If config is null, check options.localMode directly
+        const useLocalMode = this.config && (this.config.localMode || this.config.isLocal);
+        const initialLocalMode = this.options.localMode || process.env.DEPLOY_LOCAL === "true";
+
+        const sshCommand = useLocalMode || initialLocalMode
           ? command
           : `ssh -i ${this.options.sshKeyPath} -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=60 -o ServerAliveCountMax=3 ${this.options.sshHost} "${command}"`;
 

@@ -2,6 +2,78 @@
 
 All notable changes to Universal Deploy Bundle will be documented in this file.
 
+## [4.1.4.3] - 2026-07-02
+
+### Fixed - Null Config Protection
+
+**🔧 CRITICAL: Fixed sshExec() crashing when this.config is null**
+
+#### Bug Description
+The V4.1.4.2 fix introduced a null pointer error. The `sshExec()` method was trying to access `this.config.localMode`, but `this.config` is null during the `autoConfigure()` phase because `remoteDiscoverProject()` calls `sshExec()` before `this.config` is set.
+
+**Execution Flow:**
+```
+deploy() → autoConfigure() → remoteDiscoverProject() → sshExec()
+                                              ↑
+                                        this.config is still null!
+```
+
+**Error:**
+```
+TypeError: Cannot read properties of null (reading 'localMode')
+```
+
+#### Root Cause
+In `autoConfigure()`:
+- Line 895: `const remoteInfo = this.remoteDiscoverProject();` calls sshExec()
+- Line 898: `this.config = { ... }` sets this.config
+
+So `sshExec()` is called **before** `this.config` exists.
+
+#### Fix Applied
+- **Added null check for `this.config` in sshExec()**
+- **Fallback to `this.options.localMode` when config is null**
+- **Direct env var check for initial phase**
+
+**Fixed code:**
+```javascript
+// Check if config is initialized (called during autoConfigure phase)
+const useLocalMode = this.config && (this.config.localMode || this.config.isLocal);
+const initialLocalMode = this.options.localMode || process.env.DEPLOY_LOCAL === "true";
+
+const sshCommand = useLocalMode || initialLocalMode
+  ? command
+  : `ssh -i ...`;
+```
+
+#### Files Fixed
+- `intelligent-deployer.js` (main V4 deployer)
+  - Lines 632-639: Added null check and fallback logic in sshExec()
+
+#### Testing
+- ✅ Verified syntax with `node --check`
+- ✅ Handles null config gracefully
+- ✅ Works during autoConfigure phase
+- ✅ Works after config is set
+
+#### Impact
+- **Before**: Crash when `this.config` is null
+- **After**: Graceful fallback to initial options/env vars
+
+### Changed
+- Added null safety check in sshExec()
+- Added fallback to options.localMode for initial phase
+
+### Security
+- **None** - This was a null pointer fix
+
+### Migration
+**Required immediately** - Anyone who pulled V4.1.4.2 should pull this fix:
+
+```bash
+git pull origin master
+```
+
 ## [4.1.4.2] - 2026-07-02
 
 ### Fixed - Local Mode Detection
