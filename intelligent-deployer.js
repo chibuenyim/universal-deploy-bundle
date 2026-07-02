@@ -945,15 +945,12 @@ class UniversalIntelligentDeployerV4 {
 
   pullCode() {
     this.log("Pulling latest code...", "step");
-    this.state.transitionTo('PULL_CODE');
 
     try {
       this.sshExec(`cd ${this.config.remotePath} && git fetch origin`);
       this.sshExec(`cd ${this.config.remotePath} && git reset --hard origin/${this.config.branch}`);
       const commit = this.sshExec(`cd ${this.config.remotePath} && git log -1 --oneline`).trim();
       this.log(`Deployed commit: ${commit}`, "info");
-
-      this.state.transitionTo('PULL_CODE_COMPLETE', { commit });
     } catch (error) {
       this.state.addError(error, ERROR_CATEGORIES.NETWORK, { phase: 'git_pull' });
       throw error;
@@ -967,7 +964,6 @@ class UniversalIntelligentDeployerV4 {
     }
 
     this.log("Building backend...", "step");
-    this.state.transitionTo('BUILD_BACKEND');
 
     try {
       this.sshExec(`cd ${this.config.remotePath}/backend && rm -rf dist node_modules/.cache`);
@@ -1201,7 +1197,6 @@ ${errorContext.length > 10 ? `  ... and ${errorContext.length - 10} more errors`
     }
 
     this.log("Building frontend with zero-error detection...", "step");
-    this.state.transitionTo('BUILD_FRONTEND');
 
     try {
       // Check if rebuild is needed
@@ -1305,7 +1300,6 @@ ${errorContext.length > 10 ? `  ... and ${errorContext.length - 10} more errors`
 
   async restartServices() {
     const env = this.config.environment;
-    this.state.transitionTo('RESTART_SERVICES');
 
     if (this.config.hasBackend) {
       this.log("Restarting backend...", "step");
@@ -1410,7 +1404,6 @@ ${errorContext.length > 10 ? `  ... and ${errorContext.length - 10} more errors`
 
   async verify() {
     this.log("Verifying deployment...", "step");
-    this.state.transitionTo('VERIFY');
 
     await new Promise(resolve => setTimeout(resolve, 5000));
 
@@ -1589,26 +1582,32 @@ ${errorContext.length > 10 ? `  ... and ${errorContext.length - 10} more errors`
 
       await this.autoConfigure();
 
-      // Extract and validate environment config
-      await this.extractEnvironmentConfig();
-
-      // Validate Twelve-Factor compliance
-      const twelveFactorPassed = this.validateTwelveFactorCompliance();
-      if (!twelveFactorPassed && this.options.strictTwelveFactor) {
-        throw new Error("Twelve-Factor compliance check failed in strict mode");
-      }
-
       // Track component deployment status
       const componentStatus = {
         backend: { pending: this.config.hasBackend, success: false, skipped: false },
         frontend: { pending: this.config.hasFrontend, success: false, skipped: false }
       };
 
-      // Continue with deployment steps
+      // Stage 1: Extract environment config
+      this.state.transitionTo('EXTRACT_ENV');
+      await this.continueOrAbort();
+      await this.extractEnvironmentConfig();
+
+      // Stage 2: Validate Twelve-Factor compliance
+      this.state.transitionTo('TWELVE_FACTOR');
+      await this.continueOrAbort();
+      const twelveFactorPassed = this.validateTwelveFactorCompliance();
+      if (!twelveFactorPassed && this.options.strictTwelveFactor) {
+        throw new Error("Twelve-Factor compliance check failed in strict mode");
+      }
+
+      // Stage 3: Pull code
+      this.state.transitionTo('PULL_CODE');
       await this.continueOrAbort();
       this.pullCode();
 
-      // Build backend (with milestone support)
+      // Stage 4: Build backend (with milestone support)
+      this.state.transitionTo('BUILD_BACKEND');
       await this.continueOrAbort();
       if (this.config.hasBackend) {
         try {
@@ -1621,7 +1620,8 @@ ${errorContext.length > 10 ? `  ... and ${errorContext.length - 10} more errors`
         }
       }
 
-      // Build frontend (continues even if backend failed)
+      // Stage 5: Build frontend (continues even if backend failed)
+      this.state.transitionTo('BUILD_FRONTEND');
       await this.continueOrAbort();
       if (this.config.hasFrontend) {
         try {
@@ -1634,9 +1634,13 @@ ${errorContext.length > 10 ? `  ... and ${errorContext.length - 10} more errors`
         }
       }
 
+      // Stage 6: Restart services
+      this.state.transitionTo('RESTART_SERVICES');
       await this.continueOrAbort();
       await this.restartServices();
 
+      // Stage 7: Verify deployment
+      this.state.transitionTo('VERIFY');
       await this.continueOrAbort();
       const verified = await this.verify();
 
