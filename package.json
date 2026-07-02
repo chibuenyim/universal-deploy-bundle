@@ -4,7 +4,6 @@
   "description": "V5.1.1 - Complete Verification Integration: Multi-layer deployment verification (Process → Runtime → HTTP → E2E) with zero-error guarantees",
   "main": "intelligent-deployer-universal-v5.1.js",
   "bin": {
-    "universal-deploy": "./bin/deploy.js",
     "universal-deploy-v5": "./intelligent-deployer-universal-v5.1.js"
   },
   "scripts": {
@@ -21,19 +20,15 @@
     "verify-all": "node scripts/verify-all.js",
     "verify-all:full": "node scripts/verify-all.js --layer full",
     "verify-all:basic": "node scripts/verify-all.js --layer basic",
-    "test:e2e:runtime": "playwright test e2e/runtime-errors.spec.ts",
     "security": "node core/security-scanner.js",
     "security:scan": "node core/security-scanner.js",
     "security:fix": "node core/security-scanner.js --fix",
     "security:enterprise": "node core/security-scanner.js --enterprise --fix",
-    "security:compliance": "node core/security-scanner.js --enterprise --compliance",
-    "train:claude": "node claude-code-programmer.js --all"
+    "security:compliance": "node core/security-scanner.js --enterprise --compliance"
   },
   "keywords": [
     "deployment",
     "automation",
-    "ai",
-    "claude-code",
     "universal",
     "ssh",
     "next.js",
@@ -50,12 +45,8 @@
     "v5.1",
     "security",
     "vulnerability-scanner",
-    "npm-audit",
     "owasp",
-    "security-compliance",
-    "ci-cd",
-    "testing",
-    "training-system"
+    "ci-cd"
   ],
   "author": "",
   "license": "MIT WITH RESTRICTIONS - See LICENSE file",
@@ -64,17 +55,16 @@
     "url": "https://github.com/chibuenyim/universal-deploy-bundle"
   },
   "files": [
+    "intelligent-deployer-universal-v5.1.js",
     "scripts",
-    "e2e",
-    ".github/workflows",
-    "lib",
-    "docs",
     "core",
-    "bin",
-    "tools",
+    "hooks",
+    "examples",
+    ".github/workflows",
     "README.md",
-    "CLAUDE-CODE-TRAINING.md",
-    "install.sh"
+    "V5.1.1-RELEASE-NOTES.md",
+    "CHANGELOG.md",
+    "LICENSE"
   ],
   "dependencies": {
     "@playwright/test": "^1.40.0",
