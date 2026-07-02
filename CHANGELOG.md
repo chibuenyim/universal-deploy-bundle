@@ -2,6 +2,207 @@
 
 All notable changes to Universal Deploy Bundle will be documented in this file.
 
+## [4.1.3] - 2026-07-02
+
+### Added - Pre-Commit Code Quality Gatekeeping System
+
+**🔍 V4.1.3 adds comprehensive pre-commit scanning that gatekeeps code quality for ALL changes, not just deployment**
+
+#### What's New
+
+V4.1.3 expands the Universal Deploy Bundle from "deployment safety" to "code quality gatekeeping" by adding automatic pre-commit scanning that prevents bad code from entering your repository.
+
+#### Key Features
+
+**1. Comprehensive Pre-Commit Scanner**
+- Automatically scans staged files before each commit
+- Blocks commits with critical issues (credentials, build errors)
+- Warns about code quality issues (debug code, TODOs, commented code)
+- Configurable via `.pre-commit-config.json`
+
+**2. Security Scanning** (BLOCKS commits)
+- Hardcoded SSH keys (e.g., `~/.ssh/id_rsa_cheapestdata`)
+- API keys, tokens, passwords
+- AWS/GCP/Azure credentials
+- Database URLs with credentials
+- JWT secrets, private keys
+- 12+ credential patterns
+
+**3. Build Error Detection** (BLOCKS commits)
+- TypeScript errors (10 patterns)
+- ESLint violations (8 patterns)
+- Module resolution errors (6 patterns)
+- Missing dependencies (6 patterns)
+- Uses V4.1's 164+ error detection patterns
+
+**4. Code Quality Warnings** (WARNS)
+- `console.log`, `debugger` statements
+- `TODO`, `FIXME`, `HACK` comments
+- Commented-out code blocks
+- `@ts-ignore`, `@ts-nocheck`
+- Long lines (configurable threshold)
+
+**5. Twelve-Factor Compliance** (WARNS)
+- Hardcoded localhost URLs
+- Config in code (not environment)
+- Environment-specific code
+
+**6. Credential Cleanup Tool**
+- Scans entire Git history for credentials
+- Lists all commits with private data
+- Provides cleanup options (BFG Repo-Cleaner)
+- Helps remove `~/.ssh/id_rsa_cheapestdata` and other secrets from history
+
+#### Files Added
+
+**Hooks System:**
+- `hooks/pre-commit-scan.js` - Main scanner (600+ lines)
+- `hooks/pre-commit` - Git pre-commit hook
+- `hooks/pre-push` - Git pre-push hook
+- `hooks/INSTALL-HOOKS.sh` - Installation script
+- `hooks/CREDENTIAL-CLEANUP.sh` - Git history credential cleanup
+
+**Configuration:**
+- `.pre-commit-config.json` - Scanner configuration with all rules
+
+**Documentation:**
+- `PRE-COMMIT-SCAN.md` - Complete documentation (600+ lines)
+
+#### Installation
+
+```bash
+# Quick install
+bash hooks/INSTALL-HOOKS.sh
+
+# Manual install
+cp hooks/pre-commit .git/hooks/pre-commit
+cp hooks/pre-push .git/hooks/pre-push
+chmod +x .git/hooks/pre-commit
+chmod +x .git/hooks/pre-push
+```
+
+#### Usage
+
+**Automatic:**
+```bash
+# Make changes and commit - scanner runs automatically
+git add file.js
+git commit -m "Add feature"  # Scanner runs automatically
+```
+
+**Manual Testing:**
+```bash
+# Test scanner without committing
+node hooks/pre-commit-scan.js
+```
+
+**Credential Cleanup:**
+```bash
+# Scan git history for credentials
+bash hooks/CREDENTIAL-CLEANUP.sh
+```
+
+#### Configuration
+
+```json
+{
+  "enabled": true,
+  "blockOn": {
+    "credentials": true,      // Block credentials
+    "buildErrors": true,      // Block build errors
+    "twelveFactor": false,    // Warn on 12-factor
+    "debugCode": false,       // Warn on debug code
+    "securityIssues": true    // Block security issues
+  },
+  "warnOn": {
+    "debugCode": true,        // Warn about console.log
+    "todos": true,            // Warn about TODO/FIXME
+    "commentedCode": true,    // Warn about commented code
+    "longLines": false,       // Don't warn about long lines
+    "codeSmells": true,       // Warn about code smells
+    "performanceIssues": true // Warn about performance issues
+  },
+  "exceptions": [
+    "**/*.test.js",
+    "**/*.spec.js",
+    "**/node_modules/**"
+  ],
+  "maxLineLength": 120
+}
+```
+
+#### Benefits
+
+**For Individual Developers:**
+- ✅ Catch mistakes before committing
+- ✅ Learn best practices automatically
+- ✅ Never leak credentials again
+- ✅ Cleaner commit history
+
+**For Teams:**
+- ✅ Consistent code quality across team
+- ✅ Enforce standards automatically
+- ✅ Less code review time
+- ✅ Fewer production bugs
+
+**For Projects:**
+- ✅ Higher code quality
+- ✅ Better security posture
+- ✅ Compliance with best practices
+- ✅ Maintainable codebase
+
+#### Scope Expansion
+
+**Before V4.1.3:**
+- Universal Deploy Bundle = Deployment safety tool
+- Scans code during deployment only
+- Catches errors before production
+
+**After V4.1.3:**
+- Universal Deploy Bundle = Code quality gatekeeper
+- Scans code before every commit
+- Prevents bad code from entering repository
+- Catches issues at the source
+
+### Changed
+
+- Tool scope expanded from "deployment safety" to "code quality gatekeeping"
+- Pre-commit hooks now enforce standards automatically
+- Git history can be cleaned of credentials
+
+### Security
+
+- **High** - Prevents credential leaks before they enter repository
+- Helps remove `~/.ssh/id_rsa_cheapestdata` and other private data from git history
+- Enforces security standards across all code changes
+
+### Migration
+
+**Recommended for all teams:**
+
+```bash
+# Step 1: Install hooks
+bash hooks/INSTALL-HOOKS.sh
+
+# Step 2: Clean git history
+bash hooks/CREDENTIAL-CLEANUP.sh
+
+# Step 3: Commit configuration
+git add .pre-commit-config.json
+git commit -m "Add V4.1.3 pre-commit scanner configuration"
+
+# Step 4: Team setup
+# Add to onboarding: "Run: bash hooks/INSTALL-HOOKS.sh"
+```
+
+**Progressive Enforcement:**
+
+1. **Week 1**: Warnings only (get team used to scanner)
+2. **Week 2**: Block critical issues (credentials, build errors)
+3. **Week 3+**: Full enforcement (block all configured issues)
+
+---
+
 ## [4.1.2] - 2026-07-02
 
 ### Fixed - CRITICAL SECURITY FIX
@@ -390,7 +591,8 @@ No new dependencies added. V4.1 uses the same dependencies as V4.
 
 | Version | Release Date | Status | Key Features |
 |---------|--------------|--------|--------------|
-| 4.1.2 | 2026-07-02 | ✅ Current | Configurable SSH key path (universal tool) |
+| 4.1.3 | 2026-07-02 | ✅ Current | Pre-commit code quality gatekeeping system |
+| 4.1.2 | 2026-07-02 | ✅ Stable | Configurable SSH key path + smart local/remote detection |
 | 4.1.1 | 2026-07-02 | ✅ Stable | Fixed infinite recursion bug |
 | 4.1.0 | 2026-07-02 | ✅ Stable | Comprehensive error detection (164+ patterns) |
 | 4.0.0 | 2026-07-01 | ✅ Stable | Forced continuation, zero-error, 12-factor |

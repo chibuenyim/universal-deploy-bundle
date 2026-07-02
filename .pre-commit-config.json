@@ -1,0 +1,148 @@
+{
+  "enabled": true,
+  "description": "V4.1.3 Pre-Commit Configuration - Code Quality Gatekeeping",
+
+  "blockOn": {
+    "credentials": true,
+    "buildErrors": true,
+    "twelveFactor": false,
+    "debugCode": false,
+    "securityIssues": true
+  },
+
+  "warnOn": {
+    "debugCode": true,
+    "todos": true,
+    "commentedCode": true,
+    "longLines": false,
+    "codeSmells": true,
+    "performanceIssues": true
+  },
+
+  "exceptions": [
+    "**/*.test.js",
+    "**/*.spec.js",
+    "**/*.test.ts",
+    "**/*.spec.ts",
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/.next/**",
+    "**/build/**",
+    "**/.git/**",
+    "**/coverage/**"
+  ],
+
+  "maxLineLength": 120,
+
+  "rules": {
+    "security": {
+      "description": "Security and credential violations",
+      "enabled": true,
+      "block": true,
+      "patterns": {
+        "sshKeyPaths": true,
+        "apiKeys": true,
+        "passwords": true,
+        "tokens": true,
+        "awsCredentials": true,
+        "databaseUrls": true,
+        "jwtSecrets": true,
+        "privateKeys": true
+      }
+    },
+
+    "buildErrors": {
+      "description": "TypeScript, ESLint, and module errors",
+      "enabled": true,
+      "block": true,
+      "patterns": {
+        "typeScript": true,
+        "eslint": true,
+        "moduleResolution": true,
+        "dependencies": true
+      }
+    },
+
+    "codeQuality": {
+      "description": "General code quality issues",
+      "enabled": true,
+      "block": false,
+      "warn": true,
+      "patterns": {
+        "consoleLog": true,
+        "debugger": true,
+        "todo": true,
+        "fixme": true,
+        "hack": true,
+        "tsIgnore": true,
+        "commentedCode": true,
+        "longLines": false,
+        "deepNesting": true,
+        "duplicateCode": false
+      }
+    },
+
+    "twelveFactor": {
+      "description": "12-factor app methodology violations",
+      "enabled": true,
+      "block": false,
+      "warn": true,
+      "patterns": {
+        "hardcodedConfig": true,
+        "localhostUrls": true,
+        "environmentSpecificCode": true
+      }
+    },
+
+    "performance": {
+      "description": "Performance and optimization issues",
+      "enabled": true,
+      "block": false,
+      "warn": true,
+      "patterns": {
+        "nestedLoops": true,
+        "largeFunctions": true,
+        "unusedImports": true,
+        "inefficientPatterns": true
+      }
+    },
+
+    "bestPractices": {
+      "description": "Industry best practices",
+      "enabled": true,
+      "block": false,
+      "warn": true,
+      "patterns": {
+        "varKeyword": true,
+        "anyType": true,
+        "nonNullable": true,
+        "missingErrorHandling": true,
+        "magicNumbers": true
+      }
+    }
+  },
+
+  "thresholds": {
+    "maxFunctionLines": 100,
+    "maxNestingDepth": 4,
+    "maxComplexity": 10,
+    "maxFileSize": 10240,
+    "maxDuplicateLines": 5
+  },
+
+  "ignore": {
+    "files": [],
+    "patterns": [
+      "^\\.env",
+      "^\\.env\\.",
+      "^credentials\\.",
+      "^secrets\\."
+    ]
+  },
+
+  "notifications": {
+    "onBlock": true,
+    "onWarning": true,
+    "verbose": false
+  }
+}
