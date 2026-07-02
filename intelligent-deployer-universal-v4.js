@@ -379,20 +379,40 @@ class UniversalIntelligentDeployerV4 {
   /**
    * ZERO-CONSOLE ERROR DETECTION
    * Scans all output for error patterns
+   * CRITICAL FIX: Uses direct console.log to prevent recursion
+   *
+   * This function scans build output for error patterns WITHOUT calling this.log()
+   * to prevent infinite recursion loop.
    */
   detectConsoleErrors(message, level) {
     if (level === 'error') return; // Already logged as error
 
+    if (level === 'warning') return; // Already logged as warning
+
+    // Skip detection for our own detection messages to prevent recursion
+    if (message.includes('Potential error detected in console:') ||
+        message.includes('Console error pattern detected:')) {
+      return;
+    }
+
+    let errorsFound = 0;
+
     for (const pattern of this.errorPatterns) {
       if (pattern.test(message)) {
-        // This might be an error - flag it
-        this.log(`Potential error detected in console: "${message}"`, 'warning');
+        errorsFound++;
+
+        // CRITICAL: Use console.log directly, NOT this.log(), to prevent recursion
+        const timestamp = new Date().toISOString();
+        console.log(`${timestamp} ⚠️  [DETECTION] Potential error detected in console: "${message}"`);
+
         this.state.addWarning(
           `Console error pattern detected: ${message}`,
           ERROR_CATEGORIES.BUILD.category
         );
       }
     }
+
+    return errorsFound;
   }
 
   /**

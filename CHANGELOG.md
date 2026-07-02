@@ -2,6 +2,57 @@
 
 All notable changes to Universal Deploy Bundle will be documented in this file.
 
+## [4.1.1] - 2026-07-02
+
+### Fixed - CRITICAL BUG FIX
+
+**🚨 CRITICAL: Fixed infinite recursion bug in console error detection**
+
+#### Bug Description
+The `detectConsoleErrors()` function was calling `this.log()` when it found errors, which in turn called `detectConsoleErrors()` again, causing infinite recursion.
+
+**Recursion Loop:**
+1. `detectConsoleErrors()` detects error
+2. Calls `this.log('Potential error detected...', 'warning')`
+3. `this.log()` calls `detectConsoleErrors()` on the new message
+4. New message also matches error pattern
+5. Infinite loop! 💥
+
+#### Fix Applied
+- **Fixed `detectConsoleErrors()` to use direct `console.log()` instead of `this.log()`**
+- **Added check to skip detection for warning-level messages**
+- **Added filter to skip detection of our own detection messages**
+- **Function now returns count of errors found**
+- **Documented the fix in code comments to prevent future regression**
+
+#### Files Fixed
+- `intelligent-deployer.js` (main V4 deployer)
+- `intelligent-deployer-universal-v4.js` (V4 standalone)
+
+#### Testing
+- Verified no recursion occurs during error detection
+- Confirmed error detection still works correctly
+- Tested with various error patterns
+
+#### Impact
+- **Before**: Infinite recursion caused stack overflow and crashes
+- **After**: Clean error detection without recursion
+
+### Changed
+- Modified `detectConsoleErrors()` to use direct console output
+- Added recursion prevention checks
+- Improved error counting functionality
+
+### Security
+- **None** - This was a bug fix, not a security issue
+
+### Migration
+**No changes required** - This is a bug fix that improves stability without API changes.
+
+---
+
+## [4.1.0] - 2026-07-02
+
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
