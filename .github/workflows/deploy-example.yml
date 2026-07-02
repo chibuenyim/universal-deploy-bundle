@@ -1,0 +1,47 @@
+# GitHub Actions Deployment Workflow - EXAMPLE
+#
+# This is a TEMPLATE for deploying your application using V5.1.1
+# Customize the paths, host, and commands for your specific project
+
+name: Deploy to Production
+
+on:
+  push:
+    branches: [master, main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy Application
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.PRODUCTION_HOST }}
+          username: ${{ secrets.PRODUCTION_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          script_stop: true
+          script: |
+            echo "🚀 Deploying application..."
+            
+            # TODO: Update this path for your project
+            cd /var/www/your-project
+            git fetch origin
+            git reset --hard origin/master
+            
+            # TODO: Add your build commands here
+            # npm install
+            # npm run build
+            
+            echo "✅ Deployment complete"
