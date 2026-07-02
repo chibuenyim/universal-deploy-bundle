@@ -101,18 +101,19 @@ class AutoFixEngine {
    * Examples: "Type 'string' is not assignable to type 'number'"
    */
   async fixTypeError(error) {
-    const { message, context } = error;
+    const { message, file, line, col, errorDetail, errorCode } = error;
 
     this.log(`Fixing TypeScript error: ${message}`, "info");
+    this.log(`  File: ${file}, Line: ${line}, Column: ${col}`, "info");
+    this.log(`  Error Code: TS${errorCode}`, "info");
+    this.log(`  Detail: ${errorDetail}`, "info");
 
-    // Extract file and line from error message
-    const fileMatch = message.match(/error TS\d+:(.+)?\((\d+),(\d+)\)/);
-    if (!fileMatch) {
-      this.log(`Could not parse TypeScript error location`, "warning");
+    // Use the pre-parsed error context
+    if (!file || !line) {
+      this.log(`Could not extract file/line from error context`, "warning");
       return false;
     }
 
-    const [, file, line, col] = fileMatch;
     const filePath = path.join(this.config.remotePath, "backend", file.trim());
 
     try {
@@ -129,40 +130,128 @@ class AutoFixEngine {
       const originalLine = lines[lineNum];
       this.log(`Original line ${lineNum + 1}: ${originalLine}`, "info");
 
-      // Apply common TypeScript fixes
+      // Apply comprehensive TypeScript fixes
       let fixedLine = originalLine;
 
-      // Fix 1: string → number
-      if (message.includes("string is not assignable to number")) {
-        fixedLine = fixedLine.replace(/: string\s*=/, ": number = ");
-        this.log(`Applied fix: Changed type from 'string' to 'number'`, "info");
-      }
-      // Fix 2: number → string
-      else if (message.includes("number is not assignable to string")) {
-        fixedLine = fixedLine.replace(/: number\s*=/, ": string = ");
-        this.log(`Applied fix: Changed type from 'number' to 'string'`, "info");
-      }
-      // Fix 3: any → specific type
-      else if (message.includes("implicitly has 'any' type")) {
-        // Add explicit type annotation
-        const varMatch = fixedLine.match(/(\w+)\s*=/);
-        if (varMatch) {
-          const varName = varMatch[1];
-          fixedLine = fixedLine.replace(/const\s+(\w+)\s*=/, `const $1: unknown =`);
-          this.log(`Applied fix: Added type annotation for '${varName}'`, "info");
+      // Fix 1: Type assignment errors (string → number, number → string, boolean, etc.)
+      if (errorDetail.includes("is not assignable to type")) {
+        // Extract source and target types
+        const typeMatch = errorDetail.match(/Type '(.+)' is not assignable to type '(.+)'/);
+        if (typeMatch) {
+          const [, sourceType, targetType] = typeMatch;
+          this.log(`Type mismatch: ${sourceType} → ${targetType}`, "info");
+
+          // Common fix: replace annotation
+          const typeAnnotationMatch = fixedLine.match(/:\s*\w+\s*=/);
+          if (typeAnnotationMatch) {
+            // Try to fix basic type mismatches
+            if (targetType === 'number' && sourceType === 'string') {
+              fixedLine = fixedLine.replace(/: string\s*=/, ": number = ");
+              this.log(`Applied fix: Changed type to 'number'`, "info");
+            } else if (targetType === 'string' && sourceType === 'number') {
+              fixedLine = fixedLine.replace(/: number\s*=/, ": string = ");
+              this.log(`Applied fix: Changed type to 'string'`, "info");
+            } else if (targetType === 'boolean') {
+              fixedLine = fixedLine.replace(/:\s*\w+\s*=/, ": boolean = ");
+              this.log(`Applied fix: Changed type to 'boolean'`, "info");
+            } else if (targetType === 'any' || targetType === 'unknown') {
+              fixedLine = fixedLine.replace(/:\s*\w+\s*=/, `: ${targetType} = `);
+              this.log(`Applied fix: Changed type to '${targetType}'`, "info");
+            } else {
+              this.log(`Type '${targetType}' requires manual handling`, "warning");
+              return false;
+            }
+          } else {
+            this.log(`No type annotation found to fix`, "warning");
+            return false;
+          }
         }
       }
-      // Fix 4: Missing property
-      else if (message.includes("does not exist on type")) {
-        const propMatch = message.match(/property '(\w+)'/);
+      // Fix 2: Implicit any errors
+      else if (errorDetail.includes("implicitly has an 'any' type") ||
+               errorDetail.includes("implicitly has 'any' type")) {
+        const varMatch = fixedLine.match(/(?:const|let|var)\s+(\w+)\s*=/);
+        if (varMatch) {
+          const varName = varMatch[1];
+          fixedLine = fixedLine.replace(/(?:const|let|var)\s+(\w+)\s*=/, `const $1: unknown =`);
+          this.log(`Applied fix: Added unknown type annotation for '${varName}'`, "info");
+        } else {
+          // Try adding type to parameter
+          const paramMatch = fixedLine.match(/(\w+)\s*[:=]/);
+          if (paramMatch) {
+            fixedLine = fixedLine.replace(/(\w+)\s*[:=]/, `$1: unknown =`);
+            this.log(`Applied fix: Added unknown type annotation`, "info");
+          }
+        }
+      }
+      // Fix 3: Property does not exist (requires manual interface fix)
+      else if (errorDetail.includes("does not exist on type") ||
+               errorDetail.includes("Property '") && errorDetail.includes("does not exist")) {
+        const propMatch = errorDetail.match(/property '(\w+)'/);
         if (propMatch) {
-          this.log(`Property '${propMatch[1]}' does not exist on type`, "info");
+          this.log(`Property '${propMatch[1]}' missing from type`, "warning");
           this.log(`This requires interface/type definition - cannot auto-fix`, "warning");
           return false;
         }
       }
+      // Fix 4: Possibly null/undefined
+      else if (errorDetail.includes("is possibly 'null'") ||
+               errorDetail.includes("is possibly 'undefined'") ||
+               errorDetail.includes("Object is possibly 'null'")) {
+        this.log(`Null safety issue detected`, "info");
+        // Add non-null assertion or optional chaining
+        if (fixedLine.includes('.')) {
+          fixedLine = fixedLine.replace(/(\w+)\./, '$1?.');
+          this.log(`Applied fix: Added optional chaining`, "info");
+        } else {
+          fixedLine = fixedLine.replace(/(\w+)(?!\s*[:=!])/, '$1!');
+          this.log(`Applied fix: Added non-null assertion`, "info");
+        }
+      }
+      // Fix 5: Cannot find name
+      else if (errorDetail.includes("Cannot find name") ||
+               errorDetail.includes("cannot find name")) {
+        const nameMatch = errorDetail.match(/Cannot find name '(\w+)'/);
+        if (nameMatch) {
+          const missingName = nameMatch[1];
+          this.log(`Missing identifier: ${missingName}`, "warning");
+          this.log(`This requires import or declaration - cannot auto-fix`, "warning");
+          return false;
+        }
+      }
+      // Fix 6: Object literal may only specify known properties
+      else if (errorDetail.includes("Object literal may only specify known properties")) {
+        const propMatch = errorDetail.match(/'(\w+)'/);
+        if (propMatch) {
+          this.log(`Excess property '${propMatch[1]}' in object literal`, "info");
+          this.log(`This requires type definition update - cannot auto-fix`, "warning");
+          return false;
+        }
+      }
+      // Fix 7: Missing required properties
+      else if (errorDetail.includes("Property '") && errorDetail.includes("is missing")) {
+        const propMatch = errorDetail.match(/Property '(\w+)' is missing/);
+        if (propMatch) {
+          this.log(`Missing required property: ${propMatch[1]}`, "warning");
+          this.log(`This requires interface implementation - cannot auto-fix`, "warning");
+          return false;
+        }
+      }
+      // Fix 8: Type 'X' is not assignable to type 'Y' (generic mismatch)
+      else if (errorCode === '2345' || errorCode === '2322') {
+        this.log(`Type incompatibility (TS${errorCode})`, "info");
+        this.log(`Complex type error - may require manual review`, "warning");
+        // Try basic fix
+        const typeMatch = fixedLine.match(/:\s*(\w+)/);
+        if (typeMatch) {
+          this.log(`Type annotation exists: ${typeMatch[1]}`, "info");
+          this.log(`Manual review needed for complex type error`, "warning");
+          return false;
+        }
+      }
       else {
-        this.log(`TypeScript error type not auto-fixable`, "warning");
+        this.log(`TypeScript error type not auto-fixable: TS${errorCode}`, "warning");
+        this.log(`Error detail: ${errorDetail}`, "info");
         return false;
       }
 

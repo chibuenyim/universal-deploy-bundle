@@ -1044,12 +1044,16 @@ class UniversalIntelligentDeployerV4 {
     // Common error patterns with context extraction
     const errorPatterns = [
       {
-        regex: /error TS(\d+):\s+(.+)\((\d+),(\d+)\)/,
+        // TypeScript errors: src/file.ts:10:5 - error TS2345: Type 'string' is not assignable to type 'number'
+        regex: /^(.+)?:(\d+):(\d+)\s+-\s+error TS(\d+):\s+(.+)$/,
         category: 'TYPESCRIPT',
         extract: (match) => ({
-          message: `TypeScript error TS${match[1]}: ${match[2]}`,
-          file: match[0], // Would need proper parsing
-          line: match[3],
+          message: `TypeScript error TS${match[4]}: ${match[5]}`,
+          file: match[1],
+          line: match[2],
+          col: match[3],
+          errorCode: match[4],
+          errorDetail: match[5],
           resolution: 'Fix TypeScript type error in source code',
           autoRecoverable: true
         })
