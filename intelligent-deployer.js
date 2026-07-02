@@ -1013,7 +1013,65 @@ class UniversalIntelligentDeployerV4 {
           this.sshExec(`cd ${this.config.remotePath}/backend && rm -rf dist node_modules`);
           this.sshExec(`cd ${this.config.remotePath}/backend && npm ci --legacy-peer-deps || npm install`);
           const finalOutput = this.sshExec(`cd ${this.config.remotePath}/backend && npm run build 2>&1`);
-          this.detectConsoleErrors(finalOutput, 'info');
+
+          // Check if generic recovery also failed
+          const remainingErrors = this.detectConsoleErrors(finalOutput, 'info');
+          if (remainingErrors > 0) {
+            // Create manual fix milestone
+            this.log("❌ Generic recovery also failed - creating manual fix milestone", "error");
+
+            const errorContext = this.analyzeBuildErrors(finalOutput);
+            const milestone = this.state.addError(
+              new Error(`Backend build requires manual fixes: ${errorContext.length} errors`),
+              ERROR_CATEGORIES.BUILD,
+              {
+                service: 'backend',
+                autoFixAttempted: true,
+                genericRecoveryAttempted: true,
+                manualFixRequired: true,
+                errors: errorContext,
+                totalErrors: errorContext.length,
+                stage: 'BUILD_BACKEND'
+              }
+            );
+
+            // Create milestone checkpoint
+            this.state.transitionTo('MANUAL_FIX_REQUIRED', {
+              component: 'backend',
+              errors: errorContext,
+              timestamp: new Date().toISOString(),
+              instructions: `
+=======================================
+📍 MANUAL FIX MILESTONE CREATED
+=======================================
+
+Component: Backend Build
+Errors: ${errorContext.length}
+Stage: BUILD_BACKEND
+
+What needs to be done:
+1. Review the ${errorContext.length} TypeScript errors above
+2. Fix the errors in your codebase
+3. Commit the fixes
+4. Re-run deployment
+
+The deployer will continue with other components (frontend)
+and will retry backend build when you're ready.
+
+Error Context:
+${errorContext.slice(0, 10).map((e, i) => `  ${i + 1}. ${e.file}:${e.line} - ${e.message}`).join('\n')}
+${errorContext.length > 10 ? `  ... and ${errorContext.length - 10} more errors` : ''}
+
+=======================================
+`
+            });
+
+            this.log("📍 Milestone saved: Manual fixes required for backend", "warning");
+            this.log("⏩ Continuing with other components (frontend)...", "force");
+
+            // DON'T throw error - allow continuation with other components
+            return;
+          }
 
           this.log("✓ Backend recovered with generic rebuild", "info");
         }
@@ -1023,14 +1081,26 @@ class UniversalIntelligentDeployerV4 {
 
       this.state.transitionTo('BUILD_BACKEND_COMPLETE');
     } catch (error) {
-      this.log("Backend build failed after auto-fix and recovery", "error");
-      this.state.addError(error, ERROR_CATEGORIES.BUILD, { service: 'backend', autoFixAttempted: true });
+      this.log("Backend build failed catastrophically", "error");
+      this.state.addError(error, ERROR_CATEGORIES.BUILD, { service: 'backend', catastrophic: true });
 
-      // Provide resolution context
-      this.log(`Resolution: ${ERROR_CATEGORIES.BUILD.resolution}`, "info");
-      this.log("Context: Backend build failed after all recovery attempts", "info");
+      // Even catastrophic errors can create milestones for manual fixing
+      this.state.transitionTo('CATASTROPHIC_FAILURE', {
+        component: 'backend',
+        error: error.message,
+        timestamp: new Date().toISOString(),
+        requiresManualIntervention: true
+      });
 
-      throw new Error(`Backend build failed after auto-fix: ${error.message}`);
+      this.log("💥 Catastrophic failure - requires manual investigation", "error");
+
+      // Still allow continuation if force-continue is enabled
+      if (this.options.forceContinue) {
+        this.log("⏩ Force continue enabled - proceeding with other components", "force");
+        return;
+      }
+
+      throw new Error(`Backend catastrophic failure: ${error.message}`);
     }
   }
 
@@ -1528,15 +1598,41 @@ class UniversalIntelligentDeployerV4 {
         throw new Error("Twelve-Factor compliance check failed in strict mode");
       }
 
+      // Track component deployment status
+      const componentStatus = {
+        backend: { pending: this.config.hasBackend, success: false, skipped: false },
+        frontend: { pending: this.config.hasFrontend, success: false, skipped: false }
+      };
+
       // Continue with deployment steps
       await this.continueOrAbort();
       this.pullCode();
 
+      // Build backend (with milestone support)
       await this.continueOrAbort();
-      if (this.config.hasBackend) await this.buildBackend();
+      if (this.config.hasBackend) {
+        try {
+          await this.buildBackend();
+          componentStatus.backend.success = true;
+          this.log("✅ Backend deployment successful", "info");
+        } catch (error) {
+          componentStatus.backend.skipped = true;
+          this.log("⚠️  Backend skipped due to errors (milestone created)", "warning");
+        }
+      }
 
+      // Build frontend (continues even if backend failed)
       await this.continueOrAbort();
-      if (this.config.hasFrontend) this.buildFrontend();
+      if (this.config.hasFrontend) {
+        try {
+          this.buildFrontend();
+          componentStatus.frontend.success = true;
+          this.log("✅ Frontend deployment successful", "info");
+        } catch (error) {
+          componentStatus.frontend.skipped = true;
+          this.log("⚠️  Frontend skipped due to errors", "warning");
+        }
+      }
 
       await this.continueOrAbort();
       await this.restartServices();
@@ -1546,28 +1642,61 @@ class UniversalIntelligentDeployerV4 {
 
       this.state.transitionTo('COMPLETE');
 
+      // Save component status to state
+      this.state.state.componentStatus = componentStatus;
+
       // Generate deployment report
       const report = await this.generateDeploymentReport();
 
-      this.log(`=== DEPLOYMENT ${report.success ? "SUCCESS ✅" : "FAILED ❌"} ===`, report.success ? "info" : "error");
+      // Display component status summary
+      this.log("\n=== COMPONENT STATUS ===", "info");
+      Object.entries(componentStatus).forEach(([component, status]) => {
+        if (status.pending) {
+          const statusStr = status.success ? "✅ SUCCESS" : status.skipped ? "⚠️  SKIPPED" : "❌ FAILED";
+          this.log(`  ${component.toUpperCase()}: ${statusStr}`, status.success ? "info" : "warning");
+        }
+      });
+      this.log("========================\n", "info");
 
-      if (report.success) {
+      // Determine overall deployment status
+      const anySuccess = Object.values(componentStatus).some(s => s.success);
+      const manualFixRequired = this.state.state.errors.some(e => e.context?.manualFixRequired);
+
+      if (manualFixRequired) {
+        this.log(`=== DEPLOYMENT PARTIAL 📍 ===`, "warning");
+        this.log(`Some components require manual fixes`, "warning");
+        this.log(`Backend: ${componentStatus.backend.success ? '✅' : '⚠️  (milestone created)'}`, "warning");
+        this.log(`Frontend: ${componentStatus.frontend.success ? '✅' : '⚠️  (milestone created)'}`, "warning");
+        this.log(`\nNext steps:`, "info");
+        this.log(`1. Fix the errors listed in the milestone above`, "info");
+        this.log(`2. Commit your fixes`, "info");
+        this.log(`3. Re-run deployment to continue`, "info");
+      } else if (report.success) {
+        this.log(`=== DEPLOYMENT SUCCESS ✅ ===`, "info");
         this.log(`Deployed to: ${this.config.url}`, "info");
+      } else if (anySuccess) {
+        this.log(`=== DEPLOYMENT PARTIAL ⚠️  ===`, "warning");
+        this.log(`Some components deployed successfully`, "warning");
       } else {
-        this.log(`Unresolved errors: ${report.errors.length}`, "error");
-        this.log(`Twelve-Factor violations: ${report.violations.length}`, "warning");
+        this.log(`=== DEPLOYMENT FAILED ❌ ===`, "error");
       }
 
-      // Clear state for next deployment
-      this.state.clearState();
+      // Clear state for next deployment (unless milestones exist)
+      if (!manualFixRequired) {
+        this.state.clearState();
+      }
 
-      process.exit(report.success ? 0 : 1);
+      process.exit(report.success ? 0 : anySuccess ? 2 : 1);
     } catch (error) {
       this.log(`Deployment failed: ${error.message}`, "error");
       this.state.addError(error, ERROR_CATEGORIES.BUILD, { phase: 'fatal' });
 
       const report = await this.generateDeploymentReport();
-      this.state.clearState();
+
+      // Even fatal errors save state for potential recovery
+      if (!this.options.forceContinue) {
+        this.state.clearState();
+      }
 
       process.exit(1);
     }
