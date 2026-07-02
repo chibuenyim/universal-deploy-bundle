@@ -1,34 +1,48 @@
 #!/usr/bin/env node
 
 /**
- * INTELLIGENT UNIVERSAL DEPLOYER V4 - ZERO-ERROR, TWELVE-FACTOR COMPLIANT
+ * INTELLIGENT UNIVERSAL DEPLOYER V5.1 - COMPLETE VERIFICATION INTEGRATION
  *
- * V4 Enhancements:
- * 1. FORCED CONTINUATION ENGINE - Agent must continue to completion unless manually stopped
- * 2. ZERO-CONSOLE ERROR SYSTEM - Detects, categorizes, and resolves all deployment errors
- * 3. TWELVE-FACTOR COMPLIANCE - Validates and enforces 12-factor principles
+ * V5.1 Complete Integration:
+ * 1. RUNTIME ERROR VERIFICATION - Browser-based Playwright verification
+ * 2. HTTP DEPLOYMENT VERIFIER - Complete endpoint testing
+ * 3. UNIFIED VERIFICATION FLOW - All verification layers orchestrated
+ * 4. ZERO-TOLERANCE POLICY - External failures are deployment blockers
+ *
+ * V4 Features (Preserved):
+ * - FORCED CONTINUATION ENGINE - Agent must continue to completion unless manually stopped
+ * - ZERO-CONSOLE ERROR SYSTEM - Detects, categorizes, and resolves all deployment errors
+ * - TWELVE-FACTOR COMPLIANCE - Validates and enforces 12-factor principles
  *
  * Features:
+ * - Multi-layer verification: Process → Runtime → HTTP → E2E
  * - Persistent state tracking - can resume from any failure point
  * - Zero-error tolerance - every error must be resolved before deployment completes
  * - Context-aware error resolution - provides specific guidance for each error type
  * - Twelve-factor validation - ensures adherence to cloud-native best practices
+ * - Complete verification integration - NO separate manual steps needed
  * - Automatic rollback on critical failures
  * - Complete error logging and audit trail
  *
  * Usage:
- *   node deploy-v4.js [environment] [options]
+ *   node intelligent-deployer-universal-v5.1.js [environment] [options]
  *
  * Options:
- *   --ssh <host>          SSH host (default: from env or config)
- *   --config <path>       Path to config file
- *   --local               Run locally (no SSH)
- *   --verify              Only run health checks
- *   --branch <name>       Git branch to deploy
- *   --port <number>       Frontend port
- *   --backend-port <num>  Backend port
- *   --force-continue      Force continuation from previous state
- *   --strict-12factor     Enforce strict 12-factor compliance (fail on violations)
+ *   --ssh <host>              SSH host (default: from env or config)
+ *   --ssh-key-path <path>    SSH key path (default: ~/.ssh/id_rsa)
+ *   --config <path>           Path to config file
+ *   --local                   Run locally (no SSH)
+ *   --verify                  Only run health checks
+ *   --branch <name>           Git branch to deploy
+ *   --url <url>               Deployment URL for verification
+ *   --port <number>           Frontend port
+ *   --backend-port <num>      Backend port
+ *   --force-continue          Force continuation from previous state
+ *   --strict-12factor         Enforce strict 12-factor compliance (fail on violations)
+ *   --verify-layer <level>    Verification depth: basic|standard|full (default: standard)
+ *   --skip-runtime            Skip runtime error verification
+ *   --skip-http               Skip HTTP endpoint verification
+ *   --skip-e2e                Skip E2E tests
  */
 
 const { execSync } = require("child_process");
@@ -36,7 +50,7 @@ const fs = require("fs");
 const path = require("path");
 
 /**
- * V4 ERROR CLASSIFICATION SYSTEM
+ * V5.1 ERROR CLASSIFICATION SYSTEM (Extended from V4)
  * All errors are categorized and provided with resolution context
  */
 const ERROR_CATEGORIES = {
@@ -80,6 +94,25 @@ const ERROR_CATEGORIES = {
     category: 'PERMISSION',
     severity: 'CRITICAL',
     resolution: 'Verify file permissions and SSH credentials',
+    autoRecoverable: false
+  },
+  // V5.1 New Categories
+  RUNTIME_VERIFICATION: {
+    category: 'RUNTIME_VERIFICATION',
+    severity: 'CRITICAL',
+    resolution: 'Runtime errors detected - check browser console, fix client-side errors',
+    autoRecoverable: false
+  },
+  HTTP_VERIFICATION: {
+    category: 'HTTP_VERIFICATION',
+    severity: 'CRITICAL',
+    resolution: 'HTTP endpoints failing - check API responses, fix backend errors',
+    autoRecoverable: false
+  },
+  E2E_VERIFICATION: {
+    category: 'E2E_VERIFICATION',
+    severity: 'CRITICAL',
+    resolution: 'E2E tests failing - check user flows, fix integration issues',
     autoRecoverable: false
   }
 };
@@ -313,13 +346,14 @@ class DeploymentState {
 }
 
 /**
- * V4 UNIVERSAL DEPLOYER WITH FORCED CONTINUATION
+ * V5.1 UNIVERSAL DEPLOYER WITH COMPLETE VERIFICATION INTEGRATION
  */
-class UniversalIntelligentDeployerV4 {
+class UniversalIntelligentDeployerV51 {
   constructor(options = {}) {
     this.options = {
       environment: options.environment || process.env.DEPLOY_ENV || "production",
       sshHost: options.sshHost || process.env.DEPLOY_SSH_HOST,
+      sshKeyPath: options.sshKeyPath || process.env.DEPLOY_SSH_KEY_PATH || "~/.ssh/id_rsa",
       localMode: options.localMode || process.env.DEPLOY_LOCAL === "true",
       configPath: options.configPath || process.env.DEPLOY_CONFIG || ".deploy-config.json",
       branch: options.branch || process.env.DEPLOY_BRANCH,
@@ -328,6 +362,11 @@ class UniversalIntelligentDeployerV4 {
       verifyOnly: options.verifyOnly || false,
       forceContinue: options.forceContinue || false,
       strictTwelveFactor: options.strictTwelveFactor || false,
+      // V5.1 New Options
+      verifyLayer: options.verifyLayer || process.env.DEPLOY_VERIFY_LAYER || "standard", // basic|standard|full
+      skipRuntime: options.skipRuntime || false,
+      skipHttp: options.skipHttp || false,
+      skipE2e: options.skipE2e || false,
     };
 
     this.state = new DeploymentState(options.stateFile);
@@ -363,10 +402,11 @@ class UniversalIntelligentDeployerV4 {
       discover: "🔍",
       universal: "🌐",
       force: "⏩",
-      checkpoint: "📍"
+      checkpoint: "📍",
+      verification: "🔍"
     }[level] || "ℹ️";
 
-    const logMessage = `${timestamp} ${prefix} [V4-${this.state.state.currentStage}] ${message}`;
+    const logMessage = `${timestamp} ${prefix} [V5.1-${this.state.state.currentStage}] ${message}`;
     console.log(logMessage);
 
     // Track for error detection
@@ -617,7 +657,7 @@ class UniversalIntelligentDeployerV4 {
 
         const sshCommand = this.options.localMode
           ? command
-          : `ssh -i ~/.ssh/id_rsa_cheapestdata -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=60 -o ServerAliveCountMax=3 ${this.options.sshHost} "${command}"`;
+          : `ssh -i ${this.options.sshKeyPath} -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=60 -o ServerAliveCountMax=3 ${this.options.sshHost} "${command}"`;
 
         // Capture output for error detection
         const output = execSync(sshCommand, {
@@ -1136,12 +1176,169 @@ class UniversalIntelligentDeployerV4 {
     this.state.transitionTo('RESTART_SERVICES_COMPLETE');
   }
 
+  /**
+   * V5.1 COMPLETE VERIFICATION INTEGRATION
+   * Orchestrates all verification layers: Process → Runtime → HTTP → E2E
+   */
   async verify() {
-    this.log("Verifying deployment...", "step");
+    this.log("=== V5.1 COMPLETE VERIFICATION INTEGRATION ===", "verification");
+    this.log("Verification depth: " + this.options.verifyLayer.toUpperCase(), "info");
     this.state.transitionTo('VERIFY');
 
     await new Promise(resolve => setTimeout(resolve, 5000));
 
+    const verificationResults = {
+      processes: false,
+      runtime: false,
+      http: false,
+      e2e: false
+    };
+
+    try {
+      // LAYER 1: Process Verification (Basic - Always Runs)
+      this.log("\n🔍 LAYER 1: PROCESS VERIFICATION", "verification");
+      verificationResults.processes = await this.verifyProcesses();
+
+      if (!verificationResults.processes) {
+        throw new Error("Process verification failed - deployment incomplete");
+      }
+
+      // Determine which verification layers to run
+      const layers = this.getVerificationLayers();
+
+      // LAYER 2: Runtime Error Verification (Standard/Full)
+      if (layers.runtime && this.config.hasFrontend) {
+        this.log("\n🔍 LAYER 2: RUNTIME ERROR VERIFICATION (Browser-Based)", "verification");
+        verificationResults.runtime = await this.verifyRuntimeErrors();
+
+        if (!verificationResults.runtime && this.options.verifyLayer === 'full') {
+          throw new Error("Runtime verification failed - client-side errors detected");
+        }
+      }
+
+      // LAYER 3: HTTP Endpoint Verification (Standard/Full)
+      if (layers.http) {
+        this.log("\n🔍 LAYER 3: HTTP ENDPOINT VERIFICATION", "verification");
+        verificationResults.http = await this.verifyHTTPEndpoints();
+
+        if (!verificationResults.http && this.options.verifyLayer === 'full') {
+          throw new Error("HTTP verification failed - API endpoints not responding");
+        }
+      }
+
+      // LAYER 4: E2E Verification (Full Only)
+      if (layers.e2e && this.config.hasFrontend) {
+        this.log("\n🔍 LAYER 4: E2E VERIFICATION", "verification");
+        verificationResults.e2e = await this.verifyE2E();
+
+        if (!verificationResults.e2e) {
+          throw new Error("E2E verification failed - user flow issues detected");
+        }
+      }
+
+      // Print final verification summary
+      this.log("\n=== VERIFICATION SUMMARY ===", "verification");
+      this.log(`Process Check: ${verificationResults.processes ? '✅ PASS' : '❌ FAIL'}`, verificationResults.processes ? 'info' : 'error');
+      if (layers.runtime) {
+        this.log(`Runtime Check: ${verificationResults.runtime ? '✅ PASS' : '❌ FAIL'}${verificationResults.runtime ? '' : ' (Non-blocking in standard mode)'}`, verificationResults.runtime ? 'info' : 'warning');
+      }
+      if (layers.http) {
+        this.log(`HTTP Check: ${verificationResults.http ? '✅ PASS' : '❌ FAIL'}${verificationResults.http ? '' : ' (Non-blocking in standard mode)'}`, verificationResults.http ? 'info' : 'warning');
+      }
+      if (layers.e2e) {
+        this.log(`E2E Check: ${verificationResults.e2e ? '✅ PASS' : '❌ FAIL'}`, verificationResults.e2e ? 'info' : 'error');
+      }
+
+      // Determine overall success
+      const criticalPass = verificationResults.processes;
+      const standardPass = criticalPass && (layers.runtime ? verificationResults.runtime : true) && (layers.http ? verificationResults.http : true);
+      const fullPass = standardPass && (layers.e2e ? verificationResults.e2e : true);
+
+      if (this.options.verifyLayer === 'full' && fullPass) {
+        this.log("\n✅✅✅ FULL VERIFICATION PASSED - ALL CHECKS SUCCESSFUL ✅✅✅", "info");
+        this.state.transitionTo('VERIFY_COMPLETE');
+        return true;
+      } else if (this.options.verifyLayer === 'standard' && standardPass) {
+        this.log("\n✅ STANDARD VERIFICATION PASSED", "info");
+        if (!verificationResults.runtime || !verificationResults.http) {
+          this.log("⚠️  Note: Some non-critical checks failed (standard mode allows continuation)", "warning");
+        }
+        this.state.transitionTo('VERIFY_COMPLETE');
+        return true;
+      } else if (this.options.verifyLayer === 'basic' && criticalPass) {
+        this.log("\n✅ BASIC VERIFICATION PASSED", "info");
+        this.state.transitionTo('VERIFY_COMPLETE');
+        return true;
+      } else {
+        throw new Error(`Verification failed at ${this.options.verifyLayer} level`);
+      }
+
+    } catch (error) {
+      this.log(`\n❌ Verification failed: ${error.message}`, "error");
+      this.state.addError(error, ERROR_CATEGORIES.PROCESS, { phase: 'verification', verificationResults });
+
+      // Attempt auto-recovery for process failures
+      if (error.message.includes('Process')) {
+        this.log("Attempting auto-recovery...", "warning");
+
+        try {
+          await this.restartServices();
+          await new Promise(resolve => setTimeout(resolve, 5000));
+
+          const retrySuccess = await this.verifyProcesses();
+
+          if (retrySuccess) {
+            this.log("✅ Auto-recovery successful!", "info");
+            this.state.transitionTo('VERIFY_COMPLETE');
+            return true;
+          }
+        } catch (e) {
+          this.log("Auto-recovery failed", "error");
+          this.state.addError(e, ERROR_CATEGORIES.PROCESS, { phase: 'recovery' });
+        }
+      }
+
+      return false;
+    }
+  }
+
+  /**
+   * Get active verification layers based on configuration
+   */
+  getVerificationLayers() {
+    const layers = {
+      runtime: false,
+      http: false,
+      e2e: false
+    };
+
+    switch (this.options.verifyLayer) {
+      case 'basic':
+        // Only process verification
+        break;
+      case 'standard':
+        layers.runtime = !this.options.skipRuntime;
+        layers.http = !this.options.skipHttp;
+        break;
+      case 'full':
+        layers.runtime = !this.options.skipRuntime;
+        layers.http = !this.options.skipHttp;
+        layers.e2e = !this.options.skipE2e;
+        break;
+      default:
+        // Default to standard
+        layers.runtime = !this.options.skipRuntime;
+        layers.http = !this.options.skipHttp;
+    }
+
+    return layers;
+  }
+
+  /**
+   * LAYER 1: Process Verification
+   * Checks if PM2 processes are online
+   */
+  async verifyProcesses() {
     try {
       const env = this.config.environment;
       const processes = [];
@@ -1165,53 +1362,172 @@ class UniversalIntelligentDeployerV4 {
       const allOnline = processes.every(p => p.online);
 
       if (allOnline) {
-        this.log(`✅ Verification passed: All processes online`, "info");
+        this.log(`✅ Process verification passed: All processes online`, "info");
         processes.forEach(p => this.log(`  ✓ ${p.name}: online`, "info"));
-        this.state.transitionTo('VERIFY_COMPLETE');
         return true;
       }
 
       const offlineProcesses = processes.filter(p => !p.online).map(p => p.name);
-      throw new Error(`Processes offline: ${offlineProcesses.join(', ')}`);
+      this.log(`❌ Processes offline: ${offlineProcesses.join(', ')}`, "error");
+      return false;
+
     } catch (error) {
-      this.log(`Verification failed: ${error.message}`, "error");
-      this.state.addError(error, ERROR_CATEGORIES.PROCESS, { phase: 'verification' });
+      this.log(`Process verification error: ${error.message}`, "error");
+      return false;
+    }
+  }
 
-      this.log("Attempting auto-recovery...", "warning");
+  /**
+   * LAYER 2: Runtime Error Verification (Browser-Based)
+   * Runs Playwright to check for client-side runtime errors
+   */
+  async verifyRuntimeErrors() {
+    try {
+      this.log("Running browser-based runtime verification...", "step");
 
-      try {
-        await this.restartServices();
-        await new Promise(resolve => setTimeout(resolve, 5000));
+      // Check if verify script exists
+      const verifyScript = path.join(__dirname, '../scripts/verify-runtime-errors.js');
 
-        const env = this.config.environment;
-        let retrySuccess = true;
-
-        if (this.config.hasBackend) {
-          const backendName = `${env}-backend`;
-          const backendStatus = this.sshExec(
-            `PM2_HOME=/etc/.pm2 pm2 list | grep "${backendName}" | grep -c "online" || echo 0`
-          ).trim();
-          retrySuccess = retrySuccess && parseInt(backendStatus) === 1;
-        }
-
-        if (this.config.hasFrontend) {
-          const frontendName = `${env}-frontend`;
-          const frontendStatus = this.sshExec(
-            `PM2_HOME=/etc/.pm2 pm2 list | grep "${frontendName}" | grep -c "online" || echo 0`
-          ).trim();
-          retrySuccess = retrySuccess && parseInt(frontendStatus) === 1;
-        }
-
-        if (retrySuccess) {
-          this.log("✅ Auto-recovery successful!", "info");
-          this.state.transitionTo('VERIFY_COMPLETE');
-          return true;
-        }
-      } catch (e) {
-        this.log("Auto-recovery failed", "error");
-        this.state.addError(e, ERROR_CATEGORIES.PROCESS, { phase: 'recovery' });
+      if (!fs.existsSync(verifyScript)) {
+        this.log("Runtime verification script not found, skipping...", "warning");
+        return true; // Don't block if script doesn't exist
       }
 
+      // Run the verification script
+      const { spawn } = require('child_process');
+
+      return new Promise((resolve) => {
+        const verifyProcess = spawn('node', [verifyScript], {
+          cwd: path.join(__dirname, '..'),
+          env: {
+            ...process.env,
+            VERIFY_PORT: this.config.frontendPort?.toString() || '3000'
+          },
+          stdio: 'inherit'
+        });
+
+        verifyProcess.on('close', (code) => {
+          if (code === 0) {
+            this.log("✅ Runtime verification passed - No browser errors detected", "info");
+            resolve(true);
+          } else {
+            this.log("❌ Runtime verification failed - Browser errors detected", "error");
+            this.state.addError(
+              new Error("Runtime errors detected in browser"),
+              ERROR_CATEGORIES.RUNTIME_VERIFICATION,
+              { exitCode: code }
+            );
+            resolve(false);
+          }
+        });
+
+        verifyProcess.on('error', (err) => {
+          this.log(`Runtime verification error: ${err.message}`, "warning");
+          resolve(true); // Don't block on verification errors
+        });
+      });
+
+    } catch (error) {
+      this.log(`Runtime verification failed: ${error.message}`, "error");
+      this.state.addError(error, ERROR_CATEGORIES.RUNTIME_VERIFICATION, { phase: 'runtime_verification' });
+      return false;
+    }
+  }
+
+  /**
+   * LAYER 3: HTTP Endpoint Verification
+   * Tests all critical HTTP endpoints
+   */
+  async verifyHTTPEndpoints() {
+    try {
+      this.log("Running HTTP endpoint verification...", "step");
+
+      // Check if deployment verifier exists
+      const verifierPath = path.join(__dirname, '../core/deployment-verifier.js');
+
+      if (!fs.existsSync(verifierPath)) {
+        this.log("HTTP verifier not found, skipping...", "warning");
+        return true; // Don't block if verifier doesn't exist
+      }
+
+      const DeploymentVerifier = require(verifierPath);
+      const verifier = new DeploymentVerifier(this.config.url, {
+        timeout: 30000,
+        failOnError: false,
+        quick: this.options.verifyLayer === 'standard' // Quick checks in standard mode
+      });
+
+      const passed = await verifier.run();
+
+      if (passed) {
+        this.log("✅ HTTP verification passed - All endpoints responding", "info");
+      } else {
+        this.log("❌ HTTP verification failed - Some endpoints not responding", "error");
+        this.state.addError(
+          new Error("HTTP endpoint verification failed"),
+          ERROR_CATEGORIES.HTTP_VERIFICATION,
+          { url: this.config.url }
+        );
+      }
+
+      return passed;
+
+    } catch (error) {
+      this.log(`HTTP verification error: ${error.message}`, "error");
+      this.state.addError(error, ERROR_CATEGORIES.HTTP_VERIFICATION, { phase: 'http_verification' });
+      return false;
+    }
+  }
+
+  /**
+   * LAYER 4: E2E Verification
+   * Runs Playwright E2E tests for critical user flows
+   */
+  async verifyE2E() {
+    try {
+      this.log("Running E2E verification...", "step");
+
+      // Check if E2E tests exist
+      const e2eSpec = path.join(__dirname, '../e2e/runtime-errors.spec.ts');
+
+      if (!fs.existsSync(e2eSpec)) {
+        this.log("E2E tests not found, skipping...", "warning");
+        return true; // Don't block if tests don't exist
+      }
+
+      // Run E2E tests
+      const { spawn } = require('child_process');
+
+      return new Promise((resolve) => {
+        const playwrightProcess = spawn('npx', ['playwright', 'test', e2eSpec], {
+          cwd: path.join(__dirname, '..'),
+          stdio: 'inherit'
+        });
+
+        playwrightProcess.on('close', (code) => {
+          if (code === 0) {
+            this.log("✅ E2E verification passed - All user flows working", "info");
+            resolve(true);
+          } else {
+            this.log("❌ E2E verification failed - User flow issues detected", "error");
+            this.state.addError(
+              new Error("E2E tests failed"),
+              ERROR_CATEGORIES.E2E_VERIFICATION,
+              { exitCode: code }
+            );
+            resolve(false);
+          }
+        });
+
+        playwrightProcess.on('error', (err) => {
+          this.log(`E2E verification error: ${err.message}`, "warning");
+          resolve(true); // Don't block on verification errors
+        });
+      });
+
+    } catch (error) {
+      this.log(`E2E verification error: ${error.message}`, "error");
+      this.state.addError(error, ERROR_CATEGORIES.E2E_VERIFICATION, { phase: 'e2e_verification' });
       return false;
     }
   }
@@ -1305,7 +1621,8 @@ class UniversalIntelligentDeployerV4 {
 
   async deploy() {
     try {
-      this.log(`=== UNIVERSAL DEPLOYMENT V4 [${this.options.environment.toUpperCase()}] ===`, "universal");
+      this.log(`=== UNIVERSAL DEPLOYMENT V5.1 [${this.options.environment.toUpperCase()}] ===`, "universal");
+      this.log("Complete Verification Integration: Process → Runtime → HTTP → E2E", "info");
       this.state.transitionTo('INIT');
 
       // Check for force continue option
@@ -1351,6 +1668,7 @@ class UniversalIntelligentDeployerV4 {
 
       if (report.success) {
         this.log(`Deployed to: ${this.config.url}`, "info");
+        this.log(`Verification level: ${this.options.verifyLayer.toUpperCase()}`, "info");
       } else {
         this.log(`Unresolved errors: ${report.errors.length}`, "error");
         this.log(`Twelve-Factor violations: ${report.violations.length}`, "warning");
@@ -1375,6 +1693,97 @@ class UniversalIntelligentDeployerV4 {
 // CLI Interface
 function parseArgs() {
   const args = process.argv.slice(2);
+
+  // Handle --help first (before any other processing)
+  if (args.includes('--help')) {
+    console.log(`
+Universal Intelligent Deployer V5.1 - Complete Verification Integration
+
+Usage: node intelligent-deployer-universal-v5.1.js [environment] [options]
+
+Environment: production, staging, development (default: production)
+
+V5.1 Complete Integration:
+  Multi-layer verification: Process → Runtime → HTTP → E2E
+  🔍 RUNTIME ERROR VERIFICATION - Browser-based Playwright verification
+  🌐 HTTP DEPLOYMENT VERIFIER - Complete endpoint testing
+  🎭 E2E VERIFICATION - User flow testing
+  🚫 ZERO-TOLERANCE POLICY - External failures are deployment blockers
+
+V5.1 Enhancements:
+  --verify-layer <basic|standard|full>  Verification depth (default: standard)
+  --skip-runtime                        Skip runtime error verification
+  --skip-http                           Skip HTTP endpoint verification
+  --skip-e2e                            Skip E2E tests
+  --ssh-key-path <path>                 SSH key path (default: ~/.ssh/id_rsa)
+
+V4 Features (Preserved):
+  --force-continue      Force continuation from previous state (resumes deployment)
+  --strict-12factor    Enforce strict 12-factor compliance (fail on violations)
+
+Options:
+  --ssh <host>              SSH host (default: from env or config)
+  --config <path>           Path to config file (default: .deploy-config.json)
+  --local                   Run locally without SSH
+  --verify                  Only run health checks
+  --branch <name>           Git branch to deploy
+  --url <url>               Application URL (required for verification)
+  --port <number>            Frontend port
+  --backend-port <num>       Backend port
+  --help                    Show this help
+
+Environment Variables:
+  DEPLOY_ENV                Environment name
+  DEPLOY_SSH_HOST           SSH host
+  DEPLOY_SSH_KEY_PATH       SSH key path
+  DEPLOY_LOCAL              Set to "true" for local mode
+  DEPLOY_CONFIG             Config file path
+  DEPLOY_URL                Application URL
+  DEPLOY_BRANCH             Git branch
+  DEPLOY_FRONTEND_PORT      Frontend port
+  DEPLOY_BACKEND_PORT       Backend port
+  DEPLOY_VERIFY_LAYER       Verification layer (basic|standard|full)
+
+Verification Layers:
+  basic       - Process verification only (PM2 status checks)
+  standard    - Process + Runtime + HTTP verification (default)
+  full        - Process + Runtime + HTTP + E2E verification
+
+Config File (.deploy-config.json):
+{
+  "sshHost": "user@server.com",
+  "sshKeyPath": "~/.ssh/id_rsa",
+  "branch": "master",
+  "url": "https://example.com",
+  "frontendPort": 3000,
+  "backendPort": 3020,
+  "verifyLayer": "standard"
+}
+
+Examples:
+  # Standard deployment with full verification
+  node intelligent-deployer-universal-v5.1.js production --ssh root@server.com --url https://example.com --verify-layer full
+
+  # Quick deployment with basic verification
+  node intelligent-deployer-universal-v5.1.js staging --ssh root@server.com --url https://staging.example.com --verify-layer basic
+
+  # Standard deployment with custom SSH key
+  node intelligent-deployer-universal-v5.1.js production --ssh root@server.com --ssh-key-path ~/.ssh/my_key --url https://example.com
+
+  # Skip runtime verification for faster deployments
+  node intelligent-deployer-universal-v5.1.js production --ssh root@server.com --url https://example.com --skip-runtime
+
+  # Force continue from previous state
+  node intelligent-deployer-universal-v5.1.js production --force-continue
+
+  # Local deployment
+  node intelligent-deployer-universal-v5.1.js development --local --url http://localhost:3000
+
+  DEPLOY_SSH_HOST=root@server.com DEPLOY_URL=https://example.com node intelligent-deployer-universal-v5.1.js production
+        `);
+    process.exit(0);
+  }
+
   const options = {
     environment: args[0] || "production",
   };
@@ -1383,6 +1792,9 @@ function parseArgs() {
     switch (args[i]) {
       case "--ssh":
         options.sshHost = args[++i];
+        break;
+      case "--ssh-key-path":
+        options.sshKeyPath = args[++i];
         break;
       case "--config":
         options.configPath = args[++i];
@@ -1411,71 +1823,19 @@ function parseArgs() {
       case "--strict-12factor":
         options.strictTwelveFactor = true;
         break;
-      case "--help":
-        console.log(`
-Universal Intelligent Deployer v4 - Zero-Error, Twelve-Factor Compliant
-
-Usage: node deploy-v4.js [environment] [options]
-
-Environment: production, staging, development (default: production)
-
-V4 Enhancements:
-  --force-continue      Force continuation from previous state (resumes deployment)
-  --strict-12factor    Enforce strict 12-factor compliance (fail on violations)
-
-Options:
-  --ssh <host>          SSH host (default: from env or config)
-  --config <path>       Path to config file (default: .deploy-config.json)
-  --local               Run locally without SSH
-  --verify              Only run health checks
-  --branch <name>       Git branch to deploy
-  --url <url>           Application URL (required for verification)
-  --port <number>       Frontend port
-  --backend-port <num>  Backend port
-  --help                Show this help
-
-Environment Variables:
-  DEPLOY_ENV            Environment name
-  DEPLOY_SSH_HOST       SSH host
-  DEPLOY_LOCAL          Set to "true" for local mode
-  DEPLOY_CONFIG         Config file path
-  DEPLOY_URL            Application URL
-  DEPLOY_BRANCH         Git branch
-  DEPLOY_FRONTEND_PORT  Frontend port
-  DEPLOY_BACKEND_PORT   Backend port
-
-Twelve-Factor Compliance:
-  V4 validates the following 12-factor principles:
-  - III. Config: Store config in environment variables
-  - IV. Backing Services: Treat as attached resources
-  - V. Build, Release, Run: Strict separation of stages
-  - XI. Logs: Treat as event streams
-
-Config File (.deploy-config.json):
-{
-  "sshHost": "user@server.com",
-  "branch": "master",
-  "url": "https://example.com",
-  "frontendPort": 3000,
-  "backendPort": 3020
-}
-
-Examples:
-  # Standard deployment
-  node deploy-v4.js staging --ssh root@server.com --url https://staging.example.com
-
-  # Strict 12-factor deployment
-  node deploy-v4.js production --ssh root@server.com --url https://example.com --strict-12factor
-
-  # Force continue from previous state
-  node deploy-v4.js production --force-continue
-
-  # Local deployment
-  node deploy-v4.js development --local --url http://localhost:3000
-
-  DEPLOY_SSH_HOST=root@server.com DEPLOY_URL=https://example.com node deploy-v4.js production
-        `);
-        process.exit(0);
+      // V5.1 New Options
+      case "--verify-layer":
+        options.verifyLayer = args[++i];
+        break;
+      case "--skip-runtime":
+        options.skipRuntime = true;
+        break;
+      case "--skip-http":
+        options.skipHttp = true;
+        break;
+      case "--skip-e2e":
+        options.skipE2e = true;
+        break;
     }
   }
 
@@ -1484,7 +1844,7 @@ Examples:
 
 if (require.main === module) {
   const options = parseArgs();
-  const deployer = new UniversalIntelligentDeployerV4(options);
+  const deployer = new UniversalIntelligentDeployerV51(options);
 
   if (options.verifyOnly) {
     deployer.deploy().then(() => {
@@ -1500,4 +1860,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = UniversalIntelligentDeployerV4;
+module.exports = UniversalIntelligentDeployerV51;

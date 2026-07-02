@@ -1,18 +1,13 @@
-# 🚀 Universal Deploy Bundle V5.1.1 - Complete Verification Integration
+# 🚀 Universal Deploy Bundle V4.1.2 - SSH Key Configurability & Smart Detection
 
 [![AI Automation Ready](https://img.shields.io/badge/AI%20Automation-Ready-brightgreen)](https://github.com/chibuenyim/universal-deploy-bundle)
-[![V5.1.1 Release](https://img.shields.io/badge/Version-V5.1.1-success)](./V5.1.1-RELEASE-NOTES.md)
+[![V4.1.2 Release](https://img.shields.io/badge/Version-V4.1.2-success)](./V4.1.2-RELEASE-NOTES.md)
 [![Claude Code Trained](https://img.shields.io/badge/Claude%20Code-Trained-blue)](./CLAUDE-CODE-TRAINING.md)
-[![License: MIT](https://img.shbadge.io/badge/License-MIT%20with%20restrictions-yellow)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT%20with%20restrictions-yellow)](LICENSE)
 
-**Production-ready deployment system with complete multi-layer verification integration - Runtime, HTTP, and E2E testing automatically orchestrated.**
+**Production-ready deployment system with comprehensive build error detection, configurable SSH, and smart local/remote detection.**
 
-- 🔍 **Complete Verification Integration** - All features wired into main deployment flow
-- 🌐 **Multi-Layer Verification** - Process → Runtime → HTTP → E2E
-- 🔍 **Runtime Error Verification** - Browser-based Playwright verification integrated
-- 🌐 **HTTP Deployment Verifier** - Complete endpoint testing integrated
-- 🎭 **E2E Verification** - User flow testing integrated
-- ⚡ **Configurable Verification Depth** - Basic, Standard, or Full layers
+- 🔍 **Comprehensive Error Detection** - 164+ error patterns catch ALL build errors
 - 🔒 **Configurable SSH Key Path** - Zero-trust security for public universal tool
 - 🏠 **Smart Local/Remote Detection** - Automatic SSH optimization
 - ⏩ **Forced Continuation** - Deployment MUST complete unless manually stopped
@@ -23,98 +18,7 @@
 
 ---
 
-## 🎯 V5.1.1 - Complete Verification Integration
-
-### 🚀 THE BREAKTHROUGH
-
-**Before V5.1.1:**
-```bash
-# Multiple manual steps required
-npm run verify-zero-errors      # Manual step 1
-npm run build                   # Manual step 2
-npm run verify-runtime          # Manual step 3
-node core/deployment-verifier.js # Manual step 4
-npm run test:e2e:runtime        # Manual step 5
-node deployer.js production     # Then deploy
-
-❌ Problem: Easy to forget steps
-❌ Problem: No unified flow
-❌ Problem: Separate manual verification
-```
-
-**After V5.1.1:**
-```bash
-# One command does EVERYTHING
-npm run deploy:full
-
-✅ Solution: All verification integrated
-✅ Solution: Unified deployment flow
-✅ Solution: Verification happens automatically
-✅ Solution: Zero broken deployments
-```
-
-### 🎯 Key Features
-
-#### 1. **Multi-Layer Verification Orchestrated**
-
-All verification layers run automatically during deployment:
-
-```
-Deployment Flow with V5.1.1:
-┌─────────────────────────────────────┐
-│ 1. Pull Code                         │
-│ 2. Build Backend                    │
-│ 3. Build Frontend                    │
-│ 4. Restart Services                  │
-│ 5. COMPLETE VERIFICATION ← NEW!      │
-│    ├─ Process Verification            │
-│    ├─ Runtime Verification (Browser)  │
-│    ├─ HTTP Endpoint Verification       │
-│    └─ E2E Verification                │
-└─────────────────────────────────────┘
-```
-
-#### 2. **Runtime Error Verification (Browser-Based)** ✅ INTEGRATED
-
-- Launches REAL browser (Chromium via Playwright)
-- Detects console errors, chunk load errors, hydration issues
-- Checks for unhandled promise rejections
-- **Runs automatically during deployment**
-
-#### 3. **HTTP Deployment Verifier** ✅ INTEGRATED
-
-- Tests all critical HTTP endpoints
-- Verifies homepage, health, auth, API endpoints
-- Checks HTTP status codes and responses
-- **Runs automatically during deployment**
-
-#### 4. **E2E Verification** ✅ INTEGRATED
-
-- Runs Playwright E2E tests for critical user flows
-- Tests actual user interactions
-- Validates complete workflows
-- **Runs automatically during deployment (full mode)**
-
-#### 5. **Configurable Verification Depth**
-
-```bash
-# Basic - Process checks only (~5 seconds)
---verify-layer basic
-
-# Standard - Process + Runtime + HTTP (~30 seconds) ← DEFAULT
---verify-layer standard
-
-# Full - All layers including E2E (~2 minutes)
---verify-layer full
-```
-
----
-
-## 🎯 Previous Versions (Preserved Features)
-
-### V5.1: ZERO-TOLERANCE POLICY
-
-### V4.1.2: SSH Key Configurability & Smart Detection
+## 🎯 V4.1.2 Critical Improvements
 
 ### 1. 🔒 Configurable SSH Key Path (Security Fix)
 **Removed hardcoded credentials - now truly universal and zero-trust**
@@ -216,54 +120,29 @@ git clone https://github.com/chibuenyim/universal-deploy-bundle.git
 cd universal-deploy-bundle
 ```
 
-### V5.1.1 Usage
+### Basic Usage
 
 ```bash
-# Deploy with complete verification (RECOMMENDED)
-node intelligent-deployer-universal-v5.1.js production \
+# Deploy to production with V4.1.2 (uses default SSH key ~/.ssh/id_rsa)
+node intelligent-deployer.js production \
   --ssh root@server.com \
   --url https://example.com \
-  --verify-layer full
+  --force-continue
 
-# Quick deployment with basic verification (~5 seconds)
-node intelligent-deployer-universal-v5.1.js staging \
-  --ssh root@server.com \
-  --url https://staging.example.com \
-  --verify-layer basic
-
-# Standard deployment with custom SSH key (~30 seconds - DEFAULT)
-node intelligent-deployer-universal-v5.1.js production \
+# Deploy with custom SSH key
+node intelligent-deployer.js production \
   --ssh root@server.com \
   --ssh-key-path ~/.ssh/my_custom_key \
   --url https://example.com
 
-# Deploy with environment variables
+# Deploy via environment variable
 export DEPLOY_SSH_KEY_PATH=~/.ssh/my_key
-export DEPLOY_URL=https://example.com
-node intelligent-deployer-universal-v5.1.js production
+node intelligent-deployer.js production \
+  --ssh root@server.com \
+  --url https://example.com
 ```
 
-### Verification-Only (Standalone)
-
-```bash
-# Run all verification layers without deploying
-npm run verify-all:full
-
-# Basic verification check
-npm run verify-all:basic
-
-# Skip specific layers
-node scripts/verify-all.js --skip-e2e --skip-runtime
-```
-
-### NPM Scripts
-
-```bash
-npm run deploy          # Deploy with standard verification
-npm run deploy:full     # Deploy with complete verification
-npm run deploy:basic    # Quick deployment with basic checks
-npm run verify-all      # Run all verification layers
-```
+**Error detection and smart local/remote detection are automatic** - V4.1.2 catches all build errors and optimizes SSH usage!
 
 ---
 
