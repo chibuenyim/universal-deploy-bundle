@@ -2,6 +2,106 @@
 
 All notable changes to Universal Deploy Bundle will be documented in this file.
 
+## [4.1.2] - 2026-07-02
+
+### Fixed - CRITICAL SECURITY FIX
+
+**🔒 CRITICAL: Removed hardcoded SSH key path for public universal tool**
+
+#### Security Issue
+The deployer had a hardcoded SSH key path `~/.ssh/id_rsa_cheapestdata` which was a personal credential. This is inappropriate for a public universal tool.
+
+**Impact:**
+- Users could not use their own SSH keys without modifying code
+- Personal credential embedded in public code
+- Violated zero-trust security principles
+- Not truly "universal" as claimed
+
+#### Fix Applied
+- **Made SSH key path fully configurable** via multiple methods
+- **Added `--ssh-key-path` command-line option**
+- **Added `DEPLOY_SSH_KEY_PATH` environment variable support**
+- **Added `sshKeyPath` to config file schema**
+- **Default changed to `~/.ssh/id_rsa` (universal standard)**
+- **Updated all documentation with examples**
+- **Maintained backward compatibility**
+
+#### Configuration Options (Priority Order)
+1. Command-line: `--ssh-key-path <path>`
+2. Environment variable: `DEPLOY_SSH_KEY_PATH`
+3. Config file: `"sshKeyPath": "~/.ssh/id_rsa"`
+4. Default: `~/.ssh/id_rsa`
+
+#### Files Fixed
+- `intelligent-deployer.js` (main V4 deployer)
+- Updated constructor options
+- Updated `sshExec()` method
+- Updated command-line parser
+- Updated help text and documentation
+- Updated config file merging
+
+#### Usage Examples
+
+```bash
+# Standard deployment (uses default ~/.ssh/id_rsa)
+node intelligent-deployer.js production --ssh root@server.com --url https://example.com
+
+# Custom SSH key
+node intelligent-deployer.js production --ssh root@server.com --ssh-key-path ~/.ssh/my_key --url https://example.com
+
+# Via environment variable
+DEPLOY_SSH_KEY_PATH=~/.ssh/deployment_key node intelligent-deployer.js production --ssh root@server.com
+
+# Via config file (.deploy-config.json)
+{
+  "sshHost": "root@server.com",
+  "sshKeyPath": "~/.ssh/my_custom_key",
+  "url": "https://example.com"
+}
+```
+
+#### Testing
+- ✅ Verified default SSH key path works
+- ✅ Verified custom SSH key path via command-line
+- ✅ Verified environment variable support
+- ✅ Verified config file loading
+- ✅ Verified priority order (CLI > ENV > Config > Default)
+- ✅ Verified local mode still works (no SSH needed)
+
+#### Impact
+- **Before**: Hardcoded personal SSH key, not truly universal
+- **After**: Fully configurable SSH key path, truly universal tool
+
+### Changed
+- SSH key path now configurable via 4 different methods
+- Updated constructor to accept `sshKeyPath` option
+- Updated `sshExec()` to use configurable key path
+- Updated command-line parser with `--ssh-key-path` option
+- Updated help text with SSH key configuration examples
+- Updated config file schema and merging logic
+
+### Security
+- **High** - Removed hardcoded personal credential from public code
+- Tool is now truly universal and zero-trust
+- Users must provide their own SSH credentials
+
+### Migration
+**Recommended but not required** - Users should configure their SSH key path:
+```bash
+# Option 1: Set environment variable
+export DEPLOY_SSH_KEY_PATH=~/.ssh/your_key
+
+# Option 2: Use command-line flag
+--ssh-key-path ~/.ssh/your_key
+
+# Option 3: Add to config file (.deploy-config.json)
+{
+  "sshKeyPath": "~/.ssh/your_key"
+}
+```
+
+---
+
 ## [4.1.1] - 2026-07-02
 
 ### Fixed - CRITICAL BUG FIX
@@ -290,7 +390,9 @@ No new dependencies added. V4.1 uses the same dependencies as V4.
 
 | Version | Release Date | Status | Key Features |
 |---------|--------------|--------|--------------|
-| 4.1.0 | 2026-07-02 | ✅ Current | Comprehensive error detection (164+ patterns) |
+| 4.1.2 | 2026-07-02 | ✅ Current | Configurable SSH key path (universal tool) |
+| 4.1.1 | 2026-07-02 | ✅ Stable | Fixed infinite recursion bug |
+| 4.1.0 | 2026-07-02 | ✅ Stable | Comprehensive error detection (164+ patterns) |
 | 4.0.0 | 2026-07-01 | ✅ Stable | Forced continuation, zero-error, 12-factor |
 | 3.0.0 | 2026-06-30 | ✅ Legacy | Universal deployment agent |
 | 2.0.0 | Previous | ⚠️ Deprecated | Basic deployment |

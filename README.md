@@ -1,18 +1,58 @@
-# 🚀 Universal Deploy Bundle V4.1 - Comprehensive Build Error Detection
+# 🚀 Universal Deploy Bundle V4.1.2 - SSH Key Configurability & Smart Detection
 
 [![AI Automation Ready](https://img.shields.io/badge/AI%20Automation-Ready-brightgreen)](https://github.com/chibuenyim/universal-deploy-bundle)
-[![V4.1 Release](https://img.shields.io/badge/Version-V4.1.0-success)](./V4.1-RELEASE-NOTES.md)
+[![V4.1.2 Release](https://img.shields.io/badge/Version-V4.1.2-success)](./V4.1.2-RELEASE-NOTES.md)
 [![Claude Code Trained](https://img.shields.io/badge/Claude%20Code-Trained-blue)](./CLAUDE-CODE-TRAINING.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT%20with%20restrictions-yellow)](LICENSE)
 
-**Production-ready deployment system with comprehensive build error detection for frontend AND backend.**
+**Production-ready deployment system with comprehensive build error detection, configurable SSH, and smart local/remote detection.**
 
 - 🔍 **Comprehensive Error Detection** - 164+ error patterns catch ALL build errors
+- 🔒 **Configurable SSH Key Path** - Zero-trust security for public universal tool
+- 🏠 **Smart Local/Remote Detection** - Automatic SSH optimization
 - ⏩ **Forced Continuation** - Deployment MUST complete unless manually stopped
 - 🌐 **Twelve-Factor Compliant** - Validates cloud-native best practices
 - ✅ **Zero Hardcoding** - Works for ANY Next.js/Node.js project
 - 🛡️ **Security Scanning** - Built-in vulnerability detection
 - 🤖 **AI/CLAUDE CODE READY** - Complete training system included
+
+---
+
+## 🎯 V4.1.2 Critical Improvements
+
+### 1. 🔒 Configurable SSH Key Path (Security Fix)
+**Removed hardcoded credentials - now truly universal and zero-trust**
+
+- **Before**: Hardcoded `~/.ssh/id_rsa_cheapestdata` (personal credential)
+- **After**: Configurable via 4 methods (CLI, ENV, Config, Default)
+- **Security**: Zero-trust architecture - users control their own SSH keys
+
+**Configuration Options:**
+```bash
+# Command-line
+--ssh-key-path ~/.ssh/my_key
+
+# Environment variable
+DEPLOY_SSH_KEY_PATH=~/.ssh/my_key
+
+# Config file
+{"sshKeyPath": "~/.ssh/my_key"}
+
+# Default: ~/.ssh/id_rsa
+```
+
+### 2. 🏠 Smart Local/Remote Detection (Performance Enhancement)
+**Automatically detects if running on target server and skips SSH**
+
+- **Before**: Always attempted SSH, even when running on the server
+- **After**: Smart detection skips SSH when on target server
+- **Performance**: Faster execution with direct commands when local
+
+**Detection Methods:**
+- Hostname comparison (current hostname vs SSH target)
+- Common localhost patterns (127.0.0.1, localhost)
+- Manual override with `--local` flag
+- Clear logging of deployment mode
 
 ---
 
@@ -44,6 +84,18 @@
 
 ---
 
+## 📊 V4.1.2 Performance
+
+| Metric | V4.1 | V4.1.2 | Improvement |
+|--------|------| ------- | ------------ |
+| SSH Configurability | 0 options | 4 methods | ✅ Universal |
+| Security Risk | High (hardcoded) | None (zero-trust) | ✅ Fixed |
+| Local/Remote Detection | None | Smart automatic | ✅ Enhanced |
+| SSH Overhead | Always present | Skipped when local | ✅ Optimized |
+| Performance | SSH wrapper | Direct commands local | ✅ Faster |
+
+---
+
 ## 📊 V4.1 Performance
 
 | Metric | V4 | V4.1 | Improvement |
@@ -71,14 +123,26 @@ cd universal-deploy-bundle
 ### Basic Usage
 
 ```bash
-# Deploy to production with V4.1
+# Deploy to production with V4.1.2 (uses default SSH key ~/.ssh/id_rsa)
 node intelligent-deployer.js production \
   --ssh root@server.com \
   --url https://example.com \
   --force-continue
+
+# Deploy with custom SSH key
+node intelligent-deployer.js production \
+  --ssh root@server.com \
+  --ssh-key-path ~/.ssh/my_custom_key \
+  --url https://example.com
+
+# Deploy via environment variable
+export DEPLOY_SSH_KEY_PATH=~/.ssh/my_key
+node intelligent-deployer.js production \
+  --ssh root@server.com \
+  --url https://example.com
 ```
 
-**Error detection is automatic** - V4.1 catches all build errors during deployment!
+**Error detection and smart local/remote detection are automatic** - V4.1.2 catches all build errors and optimizes SSH usage!
 
 ---
 
@@ -265,6 +329,7 @@ node intelligent-deployer.js production \
 - **Contributing**: See [CLAUDE-CODE-TRAINING.md](./CLAUDE-CODE-TRAINING.md)
 
 **Need Help?**
+- 📖 Read [V4.1.2-RELEASE-NOTES.md](./V4.1.2-RELEASE-NOTES.md)
 - 📖 Read [V4.1-RELEASE-NOTES.md](./V4.1-RELEASE-NOTES.md)
 - 📖 Read [FRONTEND-BUILD-ERROR-DETECTION.md](./FRONTEND-BUILD-ERROR-DETECTION.md)
 - 🐛 Report issues on GitHub
@@ -274,7 +339,9 @@ node intelligent-deployer.js production \
 
 ## 🚦 Version Status
 
-- **✅ V4.1** - Current version (RECOMMENDED)
+- **✅ V4.1.2** - Current version (RECOMMENDED)
+- **✅ V4.1.1** - Stable version (fixed recursion bug)
+- **✅ V4.1** - Stable version (comprehensive error detection)
 - **✅ V4** - Stable version
 - **⚠️  V3** - Legacy version (available in `legacy/` folder)
 - **❌ V2, V1** - Deprecated
@@ -283,4 +350,4 @@ node intelligent-deployer.js production \
 
 **Made with ❤️ for AI automation and production excellence**
 
-**🚀 Deploy with confidence: V4.1 comprehensive error detection + forced continuation + twelve-factor compliance**
+**🚀 Deploy with confidence: V4.1.2 configurable SSH + smart detection + V4.1 comprehensive error detection + forced continuation + twelve-factor compliance**

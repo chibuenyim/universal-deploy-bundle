@@ -15,12 +15,14 @@
  * - Twelve-factor validation - ensures adherence to cloud-native best practices
  * - Automatic rollback on critical failures
  * - Complete error logging and audit trail
+ * - Configurable SSH key path for public universal use
  *
  * Usage:
  *   node deploy-v4.js [environment] [options]
  *
  * Options:
  *   --ssh <host>          SSH host (default: from env or config)
+ *   --ssh-key-path <path> SSH key path (default: ~/.ssh/id_rsa)
  *   --config <path>       Path to config file
  *   --local               Run locally (no SSH)
  *   --verify              Only run health checks
@@ -320,6 +322,7 @@ class UniversalIntelligentDeployerV4 {
     this.options = {
       environment: options.environment || process.env.DEPLOY_ENV || "production",
       sshHost: options.sshHost || process.env.DEPLOY_SSH_HOST,
+      sshKeyPath: options.sshKeyPath || process.env.DEPLOY_SSH_KEY_PATH || "~/.ssh/id_rsa",
       localMode: options.localMode || process.env.DEPLOY_LOCAL === "true",
       configPath: options.configPath || process.env.DEPLOY_CONFIG || ".deploy-config.json",
       branch: options.branch || process.env.DEPLOY_BRANCH,
@@ -617,7 +620,7 @@ class UniversalIntelligentDeployerV4 {
 
         const sshCommand = this.options.localMode
           ? command
-          : `ssh -i ~/.ssh/id_rsa_cheapestdata -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=60 -o ServerAliveCountMax=3 ${this.options.sshHost} "${command}"`;
+          : `ssh -i ${this.options.sshKeyPath} -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=60 -o ServerAliveCountMax=3 ${this.options.sshHost} "${command}"`;
 
         // Capture output for error detection
         const output = execSync(sshCommand, {
@@ -804,6 +807,60 @@ class UniversalIntelligentDeployerV4 {
     }
   }
 
+  /**
+   * DETECT LOCAL VS REMOTE ENVIRONMENT
+   * Determines if deployment is running on the target server
+   */
+  detectLocalVsRemote() {
+    this.log("Detecting deployment environment...", "discover");
+
+    if (this.config.localMode) {
+      this.log("✓ Local mode explicitly set", "info");
+      this.config.isLocal = true;
+      return true;
+    }
+
+    if (!this.config.sshHost) {
+      this.log("✓ No SSH host configured - running locally", "info");
+      this.config.isLocal = true;
+      this.config.localMode = true;
+      return true;
+    }
+
+    // Get current hostname
+    try {
+      const hostname = execSync('hostname').toString().trim();
+      this.log(`Current hostname: ${hostname}`, "info");
+
+      // Extract hostname from SSH host (user@host or just host)
+      const sshHostOnly = this.config.sshHost.replace(/^.*@/, '');
+      this.log(`SSH target: ${sshHostOnly}`, "info");
+
+      // Check if we're running on the target server
+      const isLocal = hostname === sshHostOnly ||
+                     sshHostOnly === 'localhost' ||
+                     sshHostOnly === '127.0.0.1' ||
+                     sshHostOnly === 'localhost.localdomain' ||
+                     sshHostOnly.startsWith('127.');
+
+      if (isLocal) {
+        this.log("✓ Running on target server - skipping SSH", "info");
+        this.config.isLocal = true;
+        this.config.localMode = true;
+      } else {
+        this.log("✓ Running on remote machine - SSH will be used", "info");
+        this.config.isLocal = false;
+      }
+
+      return isLocal;
+    } catch (error) {
+      this.log(`Could not detect hostname: ${error.message}`, "warning");
+      this.log("Assuming remote deployment", "info");
+      this.config.isLocal = false;
+      return false;
+    }
+  }
+
   async autoConfigure() {
     this.log("Universal auto-configuration...", "universal");
     this.state.transitionTo('AUTO_CONFIGURE');
@@ -813,6 +870,7 @@ class UniversalIntelligentDeployerV4 {
 
     // Merge configuration
     this.options.sshHost = this.options.sshHost || fileConfig.sshHost;
+    this.options.sshKeyPath = this.options.sshKeyPath || fileConfig.sshKeyPath;
     this.options.remotePath = this.options.remotePath || fileConfig.remotePath;
     this.options.branch = this.options.branch || fileConfig.branch;
     this.options.url = this.options.url || fileConfig.url;
@@ -838,6 +896,7 @@ class UniversalIntelligentDeployerV4 {
       hasBackend: remoteInfo.hasBackend,
       pm2Env: this.options.environment,
       localMode: this.options.localMode,
+      isLocal: false, // Will be set by detectLocalVsRemote()
     };
 
     if (!this.config.url) {
@@ -845,16 +904,20 @@ class UniversalIntelligentDeployerV4 {
       this.config.url = "http://localhost:3000";
     }
 
-    if (!this.config.sshHost && !this.config.localMode) {
-      const error = new Error("SSH host not configured");
-      this.state.addError(error, ERROR_CATEGORIES.CONFIG, { phase: 'configuration' });
-      throw error;
-    }
+    // Detect if we're on the target server
+    this.detectLocalVsRemote();
 
     this.log("Configuration:", "info");
     Object.entries(this.config).forEach(([key, value]) => {
       this.log(`  ${key}: ${value}`, "info");
     });
+
+    // Show deployment mode
+    if (this.config.isLocal) {
+      this.log("🏠 Deployment Mode: LOCAL (on target server)", "info");
+    } else {
+      this.log("🌐 Deployment Mode: REMOTE (via SSH)", "info");
+    }
 
     await this.continueOrAbort();
   }
@@ -1384,6 +1447,9 @@ function parseArgs() {
       case "--ssh":
         options.sshHost = args[++i];
         break;
+      case "--ssh-key-path":
+        options.sshKeyPath = args[++i];
+        break;
       case "--config":
         options.configPath = args[++i];
         break;
@@ -1425,6 +1491,7 @@ V4 Enhancements:
 
 Options:
   --ssh <host>          SSH host (default: from env or config)
+  --ssh-key-path <path> SSH key path (default: ~/.ssh/id_rsa)
   --config <path>       Path to config file (default: .deploy-config.json)
   --local               Run locally without SSH
   --verify              Only run health checks
@@ -1437,6 +1504,7 @@ Options:
 Environment Variables:
   DEPLOY_ENV            Environment name
   DEPLOY_SSH_HOST       SSH host
+  DEPLOY_SSH_KEY_PATH   SSH key path (default: ~/.ssh/id_rsa)
   DEPLOY_LOCAL          Set to "true" for local mode
   DEPLOY_CONFIG         Config file path
   DEPLOY_URL            Application URL
@@ -1454,6 +1522,7 @@ Twelve-Factor Compliance:
 Config File (.deploy-config.json):
 {
   "sshHost": "user@server.com",
+  "sshKeyPath": "~/.ssh/id_rsa",
   "branch": "master",
   "url": "https://example.com",
   "frontendPort": 3000,
@@ -1464,6 +1533,9 @@ Examples:
   # Standard deployment
   node deploy-v4.js staging --ssh root@server.com --url https://staging.example.com
 
+  # Custom SSH key
+  node deploy-v4.js production --ssh root@server.com --ssh-key-path ~/.ssh/my_key --url https://example.com
+
   # Strict 12-factor deployment
   node deploy-v4.js production --ssh root@server.com --url https://example.com --strict-12factor
 
@@ -1473,7 +1545,7 @@ Examples:
   # Local deployment
   node deploy-v4.js development --local --url http://localhost:3000
 
-  DEPLOY_SSH_HOST=root@server.com DEPLOY_URL=https://example.com node deploy-v4.js production
+  DEPLOY_SSH_HOST=root@server.com DEPLOY_SSH_KEY_PATH=~/.ssh/my_key DEPLOY_URL=https://example.com node deploy-v4.js production
         `);
         process.exit(0);
     }
