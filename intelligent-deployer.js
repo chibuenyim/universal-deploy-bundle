@@ -953,7 +953,7 @@ class UniversalIntelligentDeployerV4 {
     }
   }
 
-  buildBackend() {
+  async buildBackend() {
     if (!this.config.hasBackend) {
       this.log("No backend to build", "info");
       return;
@@ -1522,7 +1522,7 @@ class UniversalIntelligentDeployerV4 {
       this.pullCode();
 
       await this.continueOrAbort();
-      if (this.config.hasBackend) this.buildBackend();
+      if (this.config.hasBackend) await this.buildBackend();
 
       await this.continueOrAbort();
       if (this.config.hasFrontend) this.buildFrontend();
