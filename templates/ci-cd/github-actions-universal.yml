@@ -1,0 +1,407 @@
+# 🚀 Universal CI/CD Pipeline Template (GitHub Actions)
+# Works with ANY Next.js/Node.js project
+# Part of Universal Deploy Bundle
+
+name: Universal Deploy Pipeline
+
+on:
+  push:
+    branches: [main, master, staging, development]
+  pull_request:
+    branches: [main, master, staging]
+  workflow_dispatch:
+
+# Environment variables
+env:
+  NODE_VERSION: '18'
+  DEPLOY_TIMEOUT: '15'
+
+jobs:
+  # ============================================================
+  # JOB 1: Security Scanning (FREE & ENTERPRISE)
+  # ============================================================
+  security-scan:
+    name: 🔍 Security Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install Universal Deploy Bundle
+        run: |
+          npm install -g @universal-deploy/bundle || echo "Using local bundle"
+
+      - name: Run Security Scan (FREE)
+        run: |
+          npm run security || node core/security-scanner.js
+        continue-on-error: false
+
+      - name: Upload Security Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-report
+          path: security-report.json
+
+      - name: Enterprise Security Scan (PAID)
+        if: ${{ secrets.ENTERPRISE_LICENSE_KEY != '' }}
+        run: |
+          node core/security-scanner.js --enterprise --compliance
+        env:
+          ENTERPRISE_LICENSE_KEY: ${{ secrets.ENTERPRISE_LICENSE_KEY }}
+
+      - name: Block on Critical Vulnerabilities
+        run: |
+          node core/security-scanner.js | grep -q "critical" && exit 1 || exit 0
+
+  # ============================================================
+  # JOB 2: Code Quality & Zero-Error Verification
+  # ============================================================
+  verify-zero-errors:
+    name: ✅ Zero-Error Verification
+    runs-on: ubuntu-latest
+    needs: security-scan
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          cd frontend || npm install
+          npm ci
+
+      - name: Run Zero-Error Verification
+        run: |
+          npm run verify-zero-errors || node scripts/verify-zero-errors.js
+
+      - name: TypeScript Type Check
+        run: |
+          cd frontend || npx tsc --noEmit
+        continue-on-error: false
+
+      - name: ESLint Check
+        run: |
+          npm run lint || npx eslint .
+        continue-on-error: false
+
+  # ============================================================
+  # JOB 3: Build Frontend & Backend
+  # ============================================================
+  build:
+    name: 🏗️ Build
+    runs-on: ubuntu-latest
+    needs: verify-zero-errors
+
+    strategy:
+      matrix:
+        component: [frontend, backend]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          cd ${{ matrix.component }}
+          npm ci
+
+      - name: Build ${{ matrix.component }}
+        run: |
+          cd ${{ matrix.component }}
+          npm run build
+        env:
+          NODE_ENV: production
+        timeout-minutes: ${{ env.DEPLOY_TIMEOUT }}
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.component }}-build
+          path: ${{ matrix.component }}/.next
+          retention-days: 7
+
+  # ============================================================
+  # JOB 4: Runtime Error Testing
+  # ============================================================
+  test-runtime:
+    name: 🧪 Runtime Testing
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install Playwright
+        run: |
+          npm ci
+          npx playwright install --with-deps
+
+      - name: Run Runtime Error Tests
+        run: |
+          npm run test:e2e:runtime || npx playwright test e2e/runtime-errors.spec.ts
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
+      - name: Upload test results (summary)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: test-results/
+          retention-days: 7
+
+  # ============================================================
+  # JOB 5: Deploy to Environment (FREE)
+  # ============================================================
+  deploy:
+    name: 🚀 Deploy
+    runs-on: ubuntu-latest
+    needs: [security-scan, verify-zero-errors, build, test-runtime]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install Universal Deploy Bundle
+        run: |
+          npm install -g @universal-deploy/bundle || echo "Using local bundle"
+
+      - name: Deploy to Production (FREE)
+        run: |
+          node core/intelligent-deployer-universal.js production \
+            --ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
+            --ssh-key-path ${{ secrets.SSH_KEY_PATH }} \
+            --url ${{ secrets.DEPLOY_URL }} \
+            --force-continue
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_KEY_PATH: ${{ secrets.SSH_KEY_PATH }}
+          DEPLOY_URL: ${{ secrets.DEPLOY_URL }}
+
+      - name: Verify Deployment
+        run: |
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" ${{ secrets.DEPLOY_URL }})
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "❌ Deployment verification failed: HTTP $HTTP_CODE"
+            exit 1
+          fi
+          echo "✅ Deployment verified: HTTP 200"
+
+      - name: Deployment Summary
+        run: |
+          echo "🎉 **Deployment Complete**"
+          echo ""
+          echo "**Environment:** Production"
+          echo "**URL:** ${{ secrets.DEPLOY_URL }}"
+          echo "**Commit:** ${{ github.sha }}"
+          echo ""
+          echo "✅ **All Checks Passed:**"
+          echo "   ✓ Security scan"
+          echo "   ✓ Zero-error verification"
+          echo "   ✓ Build successful"
+          echo "   ✓ Runtime tests passed"
+          echo "   ✓ Deployment verified"
+
+  # ============================================================
+  # JOB 6: Enterprise AI Automation (PAID)
+  # ============================================================
+  ai-automation:
+    name: 🤖 AI Automation
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: ${{ secrets.ENTERPRISE_LICENSE_KEY != '' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Enable Self-Healing (ENTERPRISE)
+        run: |
+          node core/ai-automation-interface.js --enterprise --enable-self-healing
+        env:
+          ENTERPRISE_LICENSE_KEY: ${{ secrets.ENTERPRISE_LICENSE_KEY }}
+
+      - name: Enable Anomaly Detection (ENTERPRISE)
+        run: |
+          node core/ai-automation-interface.js --enterprise --enable-anomaly
+        env:
+          ENTERPRISE_LICENSE_KEY: ${{ secrets.ENTERPRISE_LICENSE_KEY }}
+
+      - name: Get Structured Status
+        run: |
+          node core/ai-automation-interface.js --status > ai-status.json
+
+      - name: Upload AI Status
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-automation-status
+          path: ai-status.json
+
+      - name: Get Scaling Predictions (ENTERPRISE)
+        run: |
+          node core/ai-automation-interface.js --enterprise --predict > predictions.json
+
+      - name: Upload Predictions
+        uses: actions/upload-artifact@v4
+        with:
+          name: scaling-predictions
+          path: predictions.json
+
+  # ============================================================
+  # JOB 7: Post-Deployment Verification
+  # ============================================================
+  post-deploy-verify:
+    name: 🔍 Post-Deploy Verification
+    runs-on: ubuntu-latest
+    needs: deploy
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install Playwright
+        run: |
+          npm ci
+          npx playwright install --with-deps
+
+      - name: Run Post-Deploy Tests
+        run: |
+          npm run verify-runtime || node scripts/verify-runtime-errors.js
+        env:
+          DEPLOY_URL: ${{ secrets.DEPLOY_URL }}
+
+      - name: Final Security Scan
+        run: |
+          npm run security:scan || node core/security-scanner.js
+
+  # ============================================================
+  # JOB 8: Notifications (FREE)
+  # ============================================================
+  notify:
+    name: 📢 Notifications
+    runs-on: ubuntu-latest
+    needs: [deploy, post-deploy-verify]
+    if: always()
+
+    steps:
+      - name: Determine Deployment Status
+        id: status
+        run: |
+          if [ "${{ needs.deploy.result }}" == "success" ] && [ "${{ needs.post-deploy-verify.result }}" == "success" ]; then
+            echo "status=success" >> $GITHUB_OUTPUT
+            echo "message=🎉 Deployment successful!" >> $GITHUB_OUTPUT
+          else
+            echo "status=failure" >> $GITHUB_OUTPUT
+            echo "message=❌ Deployment failed!" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Send Notification (Slack - Enterprise)
+        if: ${{ secrets.SLACK_WEBHOOK_URL != '' }}
+        uses: slackapi/slack-github-action@v1
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          payload: |
+            {
+              "text": "${{ steps.status.outputs.message }}",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "${{ steps.status.outputs.message }}\n\n*Repository:* ${{ github.repository }}\n*Branch:* ${{ github.ref_name }}\n*Commit:* ${{ github.sha }}\n*Author:* ${{ github.actor }}"
+                  }
+                }
+              ]
+            }
+
+      - name: Send Notification (Discord - Enterprise)
+        if: ${{ secrets.DISCORD_WEBHOOK_URL != '' }}
+        run: |
+          curl -X POST ${{ secrets.DISCORD_WEBHOOK_URL }} \
+            -H "Content-Type: application/json" \
+            -d '{
+              "content": "${{ steps.status.outputs.message }}",
+              "embeds": [{
+                "title": "Deployment Status",
+                "color": ${{ steps.status.outputs.status == 'success' && '5763719' || '16711680' }},
+                "fields": [
+                  {"name": "Repository", "value": "${{ github.repository }}"},
+                  {"name": "Branch", "value": "${{ github.ref_name }}"},
+                  {"name": "Commit", "value": "${{ github.sha }}"}
+                ]
+              }]
+            }'
+
+# ============================================================
+# USAGE INSTRUCTIONS
+# ============================================================
+#
+# FREE VERSION SETUP:
+# 1. Add secrets to your repository:
+#    - SSH_HOST: your-server.com
+#    - SSH_USER: root
+#    - SSH_KEY_PATH: ~/.ssh/id_rsa
+#    - DEPLOY_URL: https://your-app.com
+#
+# 2. Push to main/master branch to trigger deployment
+#
+# ENTERPRISE VERSION SETUP:
+# 1. Add all FREE version secrets
+# 2. Add enterprise license key:
+#    - ENTERPRISE_LICENSE_KEY: your-license-key
+# 3. Add optional notification webhooks:
+#    - SLACK_WEBHOOK_URL: https://hooks.slack.com/...
+#    - DISCORD_WEBHOOK_URL: https://discord.com/api/webhooks/...
+#
+# CUSTOMIZATION:
+# - Adjust NODE_VERSION for your project
+# - Change DEPLOY_TIMEOUT for longer builds
+# - Modify matrix for different components
+# - Add custom test scripts
+# - Configure notification channels

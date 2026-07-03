@@ -1,6 +1,6 @@
 {
   "name": "universal-deploy-bundle",
-  "version": "2.0.0",
+  "version": "5.2.0",
   "description": "Universal deployment bundle with AI automation interface, verification system, and security scanning - Works for ANY Next.js/Node.js project",
   "main": "core/universal-deployer.js",
   "bin": {
@@ -22,6 +22,13 @@
     "security:fix": "node core/security-scanner.js --fix",
     "security:enterprise": "node core/security-scanner.js --enterprise --fix",
     "security:compliance": "node core/security-scanner.js --enterprise --compliance",
+    "ai:status": "node core/ai-automation-interface.js --status",
+    "ai:self-heal": "node core/ai-automation-interface.js --enterprise --enable-self-healing",
+    "ai:anomaly": "node core/ai-automation-interface.js --enterprise --enable-anomaly",
+    "ai:predict": "node core/ai-automation-interface.js --enterprise --predict",
+    "license:validate": "node core/enterprise-license-manager.js --validate",
+    "license:status": "node core/enterprise-license-manager.js --status",
+    "license:activate": "node core/enterprise-license-manager.js --activate",
     "train:claude": "node claude-code-programmer.js --all"
   },
   "keywords": [
@@ -44,7 +51,12 @@
     "runtime-errors",
     "playwright",
     "github-actions",
-    "training-system"
+    "training-system",
+    "self-healing",
+    "anomaly-detection",
+    "predictive-scaling",
+    "enterprise-license",
+    "professional-services"
   ],
   "author": "",
   "license": "MIT WITH RESTRICTIONS - See LICENSE file",
@@ -61,8 +73,14 @@
     "core",
     "bin",
     "tools",
+    "templates",
     "README.md",
     "CLAUDE-CODE-TRAINING.md",
+    "PRICING.md",
+    "PROFESSIONAL-SERVICES.md",
+    "SECURITY-FEATURES.md",
+    "ENTERPRISE.md",
+    "V5.2.0-RELEASE-NOTES.md",
     "install.sh"
   ],
   "dependencies": {

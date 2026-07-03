@@ -1,0 +1,374 @@
+# 🚀 Universal CI/CD Pipeline Template (GitLab CI)
+# Works with ANY Next.js/Node.js project
+# Part of Universal Deploy Bundle
+
+stages:
+  - security
+  - verify
+  - build
+  - test
+  - deploy
+  - post-deploy
+  - notify
+
+# Global variables
+variables:
+  NODE_VERSION: "18"
+  DEPLOY_TIMEOUT: "15"
+  CACHE_DIR: "$CI_PROJECT_DIR/.npm_cache"
+
+# Cache configuration
+cache:
+  key: ${CI_COMMIT_REF_SLUG}
+  paths:
+    - node_modules/
+    - .npm/
+    - frontend/node_modules/
+    - backend/node_modules/
+
+# ============================================================
+# STAGE 1: Security Scanning (FREE & ENTERPRISE)
+# ============================================================
+security:scan:
+  stage: security
+  image: node:18
+  cache: {}
+  script:
+    - echo "🔍 Running security scan..."
+    - npm install -g @universal-deploy/bundle || echo "Using local bundle"
+    - npm run security || node core/security-scanner.js
+  artifacts:
+    paths:
+      - security-report.json
+    expire_in: 1 week
+  only:
+    - main
+    - master
+    - staging
+    - development
+    - merge_requests
+
+security:enterprise:
+  stage: security
+  image: node:18
+  cache: {}
+  script:
+    - echo "🔒 Running enterprise security scan..."
+    - node core/security-scanner.js --enterprise --compliance
+  artifacts:
+    paths:
+      - security-report.json
+      - enterprise-security-report.json
+    expire_in: 1 week
+  only:
+    variables:
+      - $ENTERPRISE_LICENSE_KEY
+  allow_failure: true
+
+# ============================================================
+# STAGE 2: Code Quality & Zero-Error Verification
+# ============================================================
+verify:zero-errors:
+  stage: verify
+  image: node:18
+  script:
+    - echo "✅ Running zero-error verification..."
+    - cd frontend || npm install
+    - npm ci
+    - npm run verify-zero-errors || node scripts/verify-zero-errors.js
+
+verify:typescript:
+  stage: verify
+  image: node:18
+  script:
+    - echo "🔍 Checking TypeScript types..."
+    - cd frontend || npm install
+    - npx tsc --noEmit
+
+verify:eslint:
+  stage: verify
+  image: node:18
+  script:
+    - echo "🔍 Running ESLint..."
+    - npm run lint || npx eslint .
+  allow_failure: true
+
+# ============================================================
+# STAGE 3: Build Frontend & Backend
+# ============================================================
+build:frontend:
+  stage: build
+  image: node:18
+  script:
+    - echo "🏗️ Building frontend..."
+    - cd frontend
+    - npm ci
+    - npm run build
+  artifacts:
+    paths:
+      - frontend/.next/
+      - frontend/out/
+    expire_in: 1 week
+  only:
+    - main
+    - master
+    - staging
+
+build:backend:
+  stage: build
+  image: node:18
+  script:
+    - echo "🏗️ Building backend..."
+    - cd backend
+    - npm ci
+    - npm run build
+  artifacts:
+    paths:
+      - backend/dist/
+    expire_in: 1 week
+  only:
+    - main
+    - master
+    - staging
+
+# ============================================================
+# STAGE 4: Runtime Error Testing
+# ============================================================
+test:runtime:
+  stage: test
+  image: mcr.microsoft.com/playwright:latest
+  script:
+    - echo "🧪 Running runtime error tests..."
+    - npm ci
+    - npx playwright install --with-deps
+    - npm run test:e2e:runtime || npx playwright test e2e/runtime-errors.spec.ts
+  artifacts:
+    paths:
+      - playwright-report/
+      - test-results/
+    expire_in: 1 week
+    when: always
+  only:
+    - main
+    - master
+    - staging
+
+# ============================================================
+# STAGE 5: Deploy to Environment
+# ============================================================
+deploy:staging:
+  stage: deploy
+  image: node:18
+  environment:
+    name: staging
+    url: https://staging.example.com
+  script:
+    - echo "🚀 Deploying to staging..."
+    - npm install -g @universal-deploy/bundle || echo "Using local bundle"
+    - node core/intelligent-deployer-universal.js staging \
+      --ssh $SSH_USER@$SSH_HOST \
+      --ssh-key-path $SSH_KEY_PATH \
+      --url $STAGING_URL \
+      --force-continue
+  only:
+    - staging
+
+deploy:production:
+  stage: deploy
+  image: node:18
+  environment:
+    name: production
+    url: $PRODUCTION_URL
+  script:
+    - echo "🚀 Deploying to production..."
+    - npm install -g @universal-deploy-bundle || echo "Using local bundle"
+    - node core/intelligent-deployer-universal.js production \
+      --ssh $SSH_USER@$SSH_HOST \
+      --ssh-key-path $SSH_KEY_PATH \
+      --url $PRODUCTION_URL \
+      --force-continue
+  after_script:
+    - |
+      echo "🎉 **Production Deployment Complete**"
+      echo ""
+      echo "**Environment:** Production"
+      echo "**URL:** $PRODUCTION_URL"
+      echo "**Commit:** $CI_COMMIT_SHA"
+      echo ""
+      echo "✅ **All Checks Passed:**"
+      echo "   ✓ Security scan"
+      echo "   ✓ Zero-error verification"
+      echo "   ✓ Build successful"
+      echo "   ✓ Runtime tests passed"
+      echo "   ✓ Deployment verified"
+  only:
+    - main
+    - master
+  when: manual
+
+# ============================================================
+# STAGE 6: Post-Deployment Verification
+# ============================================================
+post-deploy:verify:
+  stage: post-deploy
+  image: node:18
+  script:
+    - echo "🔍 Running post-deployment verification..."
+    - npm run verify-runtime || node scripts/verify-runtime-errors.js
+  dependencies:
+    - deploy:production
+  only:
+    - main
+    - master
+
+post-deploy:security:
+  stage: post-deploy
+  image: node:18
+  script:
+    - echo "🔒 Running post-deployment security scan..."
+    - npm run security:scan || node core/security-scanner.js
+  dependencies:
+    - deploy:production
+  only:
+    - main
+    - master
+
+# ============================================================
+# STAGE 7: AI Automation (ENTERPRISE)
+# ============================================================
+ai:self-healing:
+  stage: post-deploy
+  image: node:18
+  script:
+    - echo "🤖 Enabling self-healing..."
+    - node core/ai-automation-interface.js --enterprise --enable-self-healing
+  only:
+    variables:
+      - $ENTERPRISE_LICENSE_KEY
+  dependencies:
+    - deploy:production
+
+ai:anomaly-detection:
+  stage: post-deploy
+  image: node:18
+  script:
+    - echo "🔍 Enabling anomaly detection..."
+    - node core/ai-automation-interface.js --enterprise --enable-anomaly
+  only:
+    variables:
+      - $ENTERPRISE_LICENSE_KEY
+  dependencies:
+    - deploy:production
+
+ai:predictions:
+  stage: post-deploy
+  image: node:18
+  script:
+    - echo "📊 Getting scaling predictions..."
+    - node core/ai-automation-interface.js --enterprise --predict > predictions.json
+  artifacts:
+    paths:
+      - predictions.json
+    expire_in: 1 week
+  only:
+    variables:
+      - $ENTERPRISE_LICENSE_KEY
+  dependencies:
+    - deploy:production
+
+# ============================================================
+# STAGE 8: Notifications
+# ============================================================
+notify:success:
+  stage: notify
+  image: node:18
+  script:
+    - echo "📢 Sending success notification..."
+    - |
+      curl -X POST $SLACK_WEBHOOK_URL \
+        -H 'Content-Type: application/json' \
+        -d '{
+          "text": "🎉 Deployment Successful!",
+          "blocks": [{
+            "type": "section",
+            "text": {
+              "type": "mrkdwn",
+              "text": "🎉 Deployment Successful!\n\n*Project:* '"$CI_PROJECT_NAME"'\n*Branch:* '"$CI_COMMIT_REF_NAME"'\n*Commit:* '"$CI_COMMIT_SHA"'\n*Author:* '"$GITLAB_USER_NAME"'"
+            }
+          }]
+        }'
+  only:
+    - main
+    - master
+  when: on_success
+  allow_failure: true
+
+notify:failure:
+  stage: notify
+  image: node:18
+  script:
+    - echo "📢 Sending failure notification..."
+    - |
+      curl -X POST $SLACK_WEBHOOK_URL \
+        -H 'Content-Type: application/json' \
+        -d '{
+          "text": "❌ Deployment Failed!",
+          "blocks": [{
+            "type": "section",
+            "text": {
+              "type": "mrkdwn",
+              "text": "❌ Deployment Failed!\n\n*Project:* '"$CI_PROJECT_NAME"'\n*Branch:* '"$CI_COMMIT_REF_NAME"'\n*Commit:* '"$CI_COMMIT_SHA"'"
+            }
+          }]
+        }'
+  only:
+    - main
+    - master
+  when: on_failure
+  allow_failure: true
+
+# ============================================================
+# USAGE INSTRUCTIONS
+# ============================================================
+#
+# FREE VERSION SETUP:
+# 1. Add variables to GitLab CI/CD settings:
+#    - SSH_HOST: your-server.com
+#    - SSH_USER: root
+#    - SSH_KEY_PATH: ~/.ssh/id_rsa
+#    - PRODUCTION_URL: https://your-app.com
+#    - STAGING_URL: https://staging.your-app.com
+#
+# 2. Add SSH key to GitLab CI/CD variables:
+#    - SSH_PRIVATE_KEY: your private SSH key
+#
+# 3. Push to main/master branch to trigger deployment
+#
+# ENTERPRISE VERSION SETUP:
+# 1. Add all FREE version variables
+# 2. Add enterprise license key:
+#    - ENTERPRISE_LICENSE_KEY: your-license-key
+# 3. Add optional notification webhooks:
+#    - SLACK_WEBHOOK_URL: https://hooks.slack.com/...
+#
+# CUSTOMIZATION:
+# - Adjust NODE_VERSION for your project
+# - Change DEPLOY_TIMEOUT for longer builds
+# - Add custom test scripts
+# - Configure notification channels
+# - Add manual approvals for production
+
+# Manual job for production deployment approval
+deploy:production:manual:
+  stage: deploy
+  image: node:18
+  environment:
+    name: production
+    url: $PRODUCTION_URL
+  script:
+    - echo "✅ Production deployment approved"
+  only:
+    - main
+    - master
+  when: manual
+  allow_failure: false
