@@ -40,7 +40,7 @@ if (!fs.existsSync(nextBuildPath)) {
 }
 
 // Get port from environment variable or default
-const verifyPort = process.env.VERIFY_PORT || '3011';
+const verifyPort = process.env.VERIFY_PORT || '3000';
 const baseURL = `http://localhost:${verifyPort}`;
 
 async function startServer() {
